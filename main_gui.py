@@ -60,18 +60,22 @@ class EpubCreatorAppPyQt(QMainWindow):
         # 입력 경로
         self.input_path_label = QLabel("입력 PDF 파일:")
         self.input_path_edit = QLineEdit()
+        self.input_path_edit.setToolTip("EPUB으로 변환할 PDF 파일 또는 이미지 폴더의 경로입니다.")
         self.input_path_edit.setPlaceholderText("EPUB으로 변환할 PDF 파일 또는 이미지 폴더 경로")
         self.input_path_button = QPushButton("PDF 찾기")
         self.input_path_button.clicked.connect(self.select_input_source_pyqt)
+        self.input_path_button.setToolTip("입력 소스를 선택합니다.")
         input_path_layout = self.create_path_selection_layout(self.input_path_label, self.input_path_edit, self.input_path_button)
         main_layout.addLayout(input_path_layout)
 
         # EPUB 출력 파일
         output_path_label = QLabel("EPUB 출력 파일:")
         self.output_epub_path_edit = QLineEdit()
+        self.output_epub_path_edit.setToolTip("생성될 EPUB 파일의 전체 경로입니다. (.epub)")
         self.output_epub_path_edit.setPlaceholderText("생성될 EPUB 파일의 전체 경로 (.epub)")
         output_path_button = QPushButton("저장 경로")
         output_path_button.clicked.connect(self.select_output_epub_file_pyqt)
+        output_path_button.setToolTip("EPUB 저장 경로와 파일명을 선택합니다.")
         output_path_layout = self.create_path_selection_layout(output_path_label, self.output_epub_path_edit, output_path_button)
         main_layout.addLayout(output_path_layout)
 
@@ -79,8 +83,10 @@ class EpubCreatorAppPyQt(QMainWindow):
         credentials_label = QLabel("서비스 계정 JSON:")
         self.credentials_edit = QLineEdit()
         self.credentials_edit.setPlaceholderText("Google Cloud Vision API 서비스 계정 JSON 파일 경로")
+        self.credentials_edit.setToolTip("Google Cloud Vision API 서비스 계정 JSON 파일 경로입니다.")
         credentials_button = QPushButton("찾아보기")
         credentials_button.clicked.connect(self.select_credentials_file_pyqt)
+        credentials_button.setToolTip("서비스 계정 JSON 파일을 선택합니다.")
         credentials_layout = self.create_path_selection_layout(credentials_label, self.credentials_edit, credentials_button)
         main_layout.addLayout(credentials_layout)
 
@@ -91,12 +97,17 @@ class EpubCreatorAppPyQt(QMainWindow):
         epub_options_layout = QGridLayout(epub_options_frame)
         
         self.epub_title_edit = QLineEdit(config_manager.get("default_epub_title"))
+        self.epub_title_edit.setToolTip("생성될 EPUB 파일의 제목입니다.")
         self.epub_author_edit = QLineEdit(config_manager.get("default_epub_author"))
+        self.epub_author_edit.setToolTip("생성될 EPUB 파일의 저자입니다.")
         self.epub_illust_pages_pdf_edit = QLineEdit()
         self.epub_illust_pages_pdf_edit.setPlaceholderText("예: 1,5,10")
+        # 툴팁은 update_input_widgets_pyqt에서 동적으로 설정됩니다.
         self.epub_illust_images_external_edit = QLineEdit()
+        # 툴팁은 update_input_widgets_pyqt에서 동적으로 설정됩니다.
         add_external_illust_button = QPushButton("파일 추가")
         add_external_illust_button.clicked.connect(self.select_external_illust_files_pyqt)
+        add_external_illust_button.setToolTip("목록에 외부 일러스트 이미지 파일을 추가합니다.")
 
         epub_options_layout.addWidget(QLabel("EPUB 제목:"), 0, 0)
         epub_options_layout.addWidget(self.epub_title_edit, 0, 1)
@@ -120,6 +131,7 @@ class EpubCreatorAppPyQt(QMainWindow):
         self.process_button = QPushButton("EPUB 생성 시작")
         self.process_button.setObjectName("primaryButton") # QSS 적용용
         self.process_button.setFixedHeight(40)
+        self.process_button.setToolTip("입력된 정보를 바탕으로 EPUB 생성을 시작합니다.")
         self.process_button.clicked.connect(self.start_processing_thread_pyqt)
         main_layout.addWidget(self.process_button)
 

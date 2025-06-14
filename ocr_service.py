@@ -86,7 +86,7 @@ def process_page(page, page_number):
         app_logger.error(f"{page_number} 페이지 처리 중 오류: {e}", exc_info=True)
         # 오류 발생 시 빈 텍스트와 함께 페이지 번호 반환 또는 예외를 다시 발생시켜 상위에서 처리
         return (page_number, f"Error processing page {page_number}: {e}")
-
+        
 def process_pdf(pdf_path, output_folder):
     """
     Processes each page in a PDF file and performs OCR.
@@ -119,7 +119,7 @@ def process_pdf(pdf_path, output_folder):
         app_logger.error(f"PDF 처리 중 오류 ({pdf_path}): {e}", exc_info=True)
         # GUI에서 이 오류를 잡아서 사용자에게 알릴 수 있도록 raise
         raise
-
+        
 def process_images_in_folder(input_folder, output_folder):
     """
     Processes all image files (png, jpg, jpeg, bmp, tiff, gif) in the input folder
@@ -146,7 +146,7 @@ def process_images_in_folder(input_folder, output_folder):
     except Exception as e:
         app_logger.error(f"폴더 내 이미지 일괄 처리 중 오류 ({input_folder}): {e}", exc_info=True)
         raise
-
+        
 def process_single_image_file(image_path, output_folder):
     """
     Processes a single image file, performs OCR, and saves the text.
@@ -189,8 +189,39 @@ def process_single_image_file(image_path, output_folder):
         app_logger.error(f"단일 이미지 파일 처리 중 오류 ({image_path}): {e}", exc_info=True)
         raise
 
+def ocr_pil_images_batch(pil_images_with_identifiers):
+    """
+    여러 PIL 이미지에 대해 OCR을 수행하고, 각 이미지의 식별자와 함께 텍스트 결과를 반환합니다.
+    ThreadPoolExecutor를 사용하여 병렬 처리합니다.
+
+    Args:
+        pil_images_with_identifiers (list): 각 요소가 {'id': 식별자, 'image': PIL.Image.Image} 형태인 딕셔너리 리스트.
+                                            식별자는 페이지 번호, 파일 경로 등이 될 수 있습니다.
+
+    Returns:
+        list: 각 요소가 {'id': 식별자, 'text': 추출된 텍스트} 형태인 딕셔너리 리스트.
+              오류 발생 시 text 필드에 오류 메시지가 포함될 수 있습니다.
+    """
+    app_logger.info(f"총 {len(pil_images_with_identifiers)}개 이미지에 대한 배치 OCR 시작.")
+    results = []
+    
+    # process_page 함수는 (identifier, text)를 반환하도록 수정하거나,
+    # 여기서 identifier를 process_page에 전달하고 결과를 매핑해야 합니다.
+    # 현재 process_page는 (page_number, text)를 반환하므로, id를 page_number로 사용합니다.
+    
+    with ThreadPoolExecutor(max_workers=os.cpu_count() or 1) as executor:
+        future_to_id = {executor.submit(process_page, item['image'], item['id']): item['id'] for item in pil_images_with_identifiers}
+        for future in as_completed(future_to_id):
+            identifier = future_to_id[future]
+            try:
+                _, text_content = future.result() # process_page는 (id, text) 반환
+                results.append({'id': identifier, 'text': text_content})
+                app_logger.debug(f"이미지 ID '{identifier}' OCR 완료.")
+            except Exception as exc:
+                app_logger.error(f"이미지 ID '{identifier}' 처리 중 오류: {exc}", exc_info=True)
+                results.append({'id': identifier, 'text': f"Error processing image ID {identifier}: {exc}"})
+    app_logger.info("배치 OCR 처리 완료.")
+    return results
+
 if __name__ == "__main__":
-    input_folder = r"" #add the path of the folder that contains the pdf 
-    output_folder = r"" #add the path of the output folder 
-    # process_images_in_folder(input_folder, output_folder) # GUI에서 실행하므로 주석 처리 또는 테스트용으로 남김
-    # print("Text extraction completed!")
+    app_logger.info("ocr_service.py 직접 실행 (테스트 코드 없음).")

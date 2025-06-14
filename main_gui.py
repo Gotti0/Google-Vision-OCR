@@ -12,6 +12,7 @@ import os
 try:
     # epub_processor 모듈 임포트
     from epub_processor import EpubProcessor
+    from app_service import ApplicationService # ApplicationService 임포트
     from ocr_service import os as ocr_os # ocr_service에서 os만 가져오도록 수정
 except ImportError as e:
     if "epub_processor" in str(e).lower():
@@ -61,6 +62,7 @@ class OCRApp:
     def __init__(self, root):
         self.root = root
         app_logger.info("OCRApp GUI 초기화 시작.")
+        self.app_service = ApplicationService() # ApplicationService 인스턴스 생성
         self.root.title("EPUB 생성기 (PDF 기반)")
         self.root.geometry("600x450") # 창 크기 조정
 
@@ -251,17 +253,11 @@ class OCRApp:
             messagebox.showerror("오류", err_msg)
             return
 
-        if not ocr_os.path.exists(credentials_file):
-            err_msg = f"서비스 계정 JSON 파일을 찾을 수 없습니다: {credentials_file}"
-            app_logger.error(err_msg)
-            messagebox.showerror("오류", err_msg)
-            return
-
-        if credentials_file and ocr_os.path.exists(credentials_file): # 파일이 존재하고, PDF 모드일 때만 설정
-            ocr_os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_file
-            app_logger.info(f"GOOGLE_APPLICATION_CREDENTIALS 환경 변수 설정됨: {credentials_file}")
-        elif not is_image_folder_mode and not credentials_file: # PDF 모드인데 인증 파일이 없는 경우
-            app_logger.warning("PDF 모드이지만, 서비스 계정 JSON 파일이 제공되지 않았습니다. OCR이 실패할 수 있습니다.")
+        # ApplicationService를 통해 인증 정보 설정
+        if not self.app_service.set_google_credentials(credentials_file) and not is_image_folder_mode:
+            # PDF 모드에서 인증 설정 실패 시 경고 (이미 app_service에서 로깅됨)
+            # messagebox.showwarning("경고", "Google Cloud 인증 정보 설정에 실패했습니다. PDF OCR이 필요한 경우 문제가 발생할 수 있습니다.")
+            pass # app_service.set_google_credentials에서 이미 오류를 로깅하거나 반환값으로 처리
 
         self.process_button.config(state=tk.DISABLED)
         self.status_label.config(text="처리 중...")
@@ -304,25 +300,31 @@ class OCRApp:
                 return
 
         thread = threading.Thread(target=self.run_epub_processing,
-                                    args=(final_input_source, output_path, epub_title, epub_author, illust_pages_pdf, illust_images_ext, is_image_folder_mode))
+                                    args=(final_input_source, output_path, epub_title, epub_author, illust_pages_pdf, illust_images_ext, is_image_folder_mode, credentials_file))
         
         thread.daemon = True
         thread.start()
 
-    def run_epub_processing(self, input_source, epub_output_path, title, author, illust_pages_pdf, illust_images_ext, is_image_folder_mode):
+    def run_epub_processing(self, input_source, epub_output_path, title, author, illust_pages_pdf, illust_images_ext, is_image_folder_mode, credentials_file):
         app_logger.info(f"EPUB 생성 스레드 실행. 입력: {input_source}, EPUB: {epub_output_path}, 이미지폴더모드: {is_image_folder_mode}")
         try:
-            processor = EpubProcessor(
+            success = self.app_service.create_epub_from_source(
                 input_source=input_source,
                 output_epub_path=epub_output_path,
+                title=title, author=author,
                 illustration_pages=illust_pages_pdf,
                 illustration_images=illust_images_ext,
-                is_image_folder=is_image_folder_mode
+                is_image_folder_mode=is_image_folder_mode,
+                credentials_path=credentials_file # 인증 파일 경로 전달
             )
-            processor.create_epub(title=title, author=author)
-            self.status_label.config(text="EPUB 파일 생성 완료!")
-            messagebox.showinfo("완료", f"EPUB 파일 '{os.path.basename(epub_output_path)}' 생성이 완료되었습니다.")
-            app_logger.info(f"EPUB 파일 생성 완료: {epub_output_path}")
+            if success:
+                self.status_label.config(text="EPUB 파일 생성 완료!")
+                messagebox.showinfo("완료", f"EPUB 파일 '{os.path.basename(epub_output_path)}' 생성이 완료되었습니다.")
+                app_logger.info(f"EPUB 파일 생성 완료: {epub_output_path}")
+            # else: # ApplicationService에서 예외를 발생시키므로 별도 else 처리는 불필요할 수 있음
+            #     self.status_label.config(text="EPUB 파일 생성 실패.")
+            #     messagebox.showerror("오류", "EPUB 파일 생성에 실패했습니다.")
+            #     app_logger.error("EPUB 파일 생성 실패 (ApplicationService에서 False 반환).")
         except Exception as e:
             self.status_label.config(text=f"EPUB 생성 오류: {e}")
             messagebox.showerror("EPUB 생성 오류", f"EPUB 생성 중 오류가 발생했습니다: {e}")

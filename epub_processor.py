@@ -5,8 +5,7 @@ from ebooklib import epub
 from PIL import Image
 from pdf2image import convert_from_path
 from logger import app_logger
-from ocr_service import process_page # ocr_service.py의 process_page 함수 사용
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from ocr_service import ocr_pil_images_batch # 새로운 배치 OCR 함수 사용
 
 class EpubProcessor:
     def __init__(self, input_source, output_epub_path, illustration_pages=None, illustration_images=None, is_image_folder=False):
@@ -51,31 +50,42 @@ class EpubProcessor:
                 except Exception as e:
                     app_logger.error(f"이미지 파일 로드 실패 '{img_path}': {e}")
                     continue # 다음 이미지로
-        
-        ocr_tasks = []
-        with ThreadPoolExecutor(max_workers=os.cpu_count() or 1) as executor:
-            for i, page_pil in enumerate(source_pages_pil):
-                page_number = i + 1
-                page_image_filename = f"page_{page_number}.jpg"
-                page_image_path = os.path.join(self.temp_dir, page_image_filename)
-                page_pil.save(page_image_path, "JPEG")
+        images_for_ocr = [] # OCR을 수행할 이미지와 해당 식별자(페이지 번호)를 저장
 
-                if page_number in self.illustration_pages:
-                    app_logger.info(f"페이지 {page_number}는 일러스트로 처리 (PDF 내). 이미지 저장: {page_image_path}")
-                    processed_content.append({'type': 'image', 'path': page_image_path, 'id': f'img_pdf_{page_number}', 'page_num': page_number})
-                elif self.is_image_folder: # 이미지 폴더 모드에서는 모든 페이지를 이미지로 처리 (OCR 없음)
-                    app_logger.info(f"이미지 페이지 {page_number} 처리. 이미지 저장: {page_image_path}")
-                    processed_content.append({'type': 'image', 'path': page_image_path, 'id': f'img_folder_{page_number}', 'page_num': page_number})
-                else:
-                    app_logger.info(f"페이지 {page_number} OCR 요청.")
-                    # ocr_service.process_page는 (page_number, text) 튜플을 반환
-                    ocr_tasks.append(executor.submit(process_page, page_pil, page_number))
+        for i, page_pil_data in enumerate(source_pages_pil):
+            page_number = i + 1 # 내부 처리용 순차 번호
+            page_pil = page_pil_data['pil']
+            original_file_path = page_pil_data.get('path', f"unknown_source_{page_number}")
 
-        if ocr_tasks: # OCR 작업이 있는 경우에만 결과 수집
-            for future in as_completed(ocr_tasks):
-                p_num, text_content = future.result()
-                app_logger.info(f"페이지 {p_num} OCR 완료.")
-                processed_content.append({'type': 'text', 'content': text_content, 'page_num': p_num})
+            page_image_filename = f"page_{page_number}.jpg"
+            page_image_path = os.path.join(self.temp_dir, page_image_filename)
+            page_pil.save(page_image_path, "JPEG")
+
+            # PDF 모드에서는 illustration_pages 사용, 이미지 폴더 모드에서는 illustration_images 사용
+            is_designated_illust = False
+            if not self.is_image_folder and page_number in self.illustration_pages:
+                is_designated_illust = True
+            elif self.is_image_folder and original_file_path in self.illustration_images:
+                is_designated_illust = True
+
+            if is_designated_illust:
+                app_logger.info(f"페이지 {page_number} ('{original_file_path}')는 일러스트로 처리. 이미지 저장: {page_image_path}")
+                item_id_prefix = "img_pdf_" if not self.is_image_folder else "img_folder_designated_"
+                processed_content.append({
+                    'type': 'image', 'path': page_image_path, 
+                    'id': f'{item_id_prefix}{page_number}', 
+                    'page_num': page_number, 'original_path': original_file_path
+                })
+            else:
+                app_logger.info(f"페이지 {page_number} ('{original_file_path}') OCR 대상으로 추가.")
+                images_for_ocr.append({'id': page_number, 'image': page_pil, 'original_path': original_file_path})
+
+        if images_for_ocr:
+            ocr_results = ocr_pil_images_batch(images_for_ocr)
+            for result in ocr_results:
+                # images_for_ocr에서 original_path를 찾아 매핑
+                original_path_for_text = next((item['original_path'] for item in images_for_ocr if item['id'] == result['id']), "Unknown")
+                processed_content.append({'type': 'text', 'content': result['text'], 'page_num': result['id'], 'original_path': original_path_for_text})
 
         # 외부 일러스트 이미지 추가
         for idx, img_path in enumerate(self.illustration_images):

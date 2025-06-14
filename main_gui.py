@@ -10,12 +10,10 @@ import os
 # ocr_service 모듈이 같은 디렉토리에 있다고 가정합니다.
 # 그렇지 않은 경우, sys.path를 수정하거나 ocr_service.py의 경로를 정확히 명시해야 합니다.
 try:
-    from ocr_service import (process_images_in_folder, process_pdf,
-                             process_single_image_file, os as ocr_os)
     # epub_processor 모듈 임포트
     from epub_processor import EpubProcessor
+    from ocr_service import os as ocr_os # ocr_service에서 os만 가져오도록 수정
 except ImportError as e:
-    err_msg = "ocr_service.py를 찾을 수 없습니다. 같은 디렉토리에 있는지 확인하세요."
     if "epub_processor" in str(e).lower():
         err_msg = "epub_processor.py를 찾을 수 없습니다. 같은 디렉토리에 있는지 확인하세요."
 
@@ -63,12 +61,10 @@ class OCRApp:
     def __init__(self, root):
         self.root = root
         app_logger.info("OCRApp GUI 초기화 시작.")
-        self.root.title("PDF OCR 처리기")
-        self.root.geometry("600x550") # 창 크기 조정 (EPUB 필드 추가로 인해)
+        self.root.title("EPUB 생성기 (PDF 기반)")
+        self.root.geometry("600x400") # 창 크기 조정
 
-        self.input_mode = tk.StringVar(value="folder")
         self.input_path_var = tk.StringVar()
-        self.output_folder_path = tk.StringVar()
         self.output_epub_path_var = tk.StringVar() # EPUB 출력용
         self.credentials_path_var = tk.StringVar()
 
@@ -78,29 +74,25 @@ class OCRApp:
         self.epub_illust_pages_pdf_var = tk.StringVar() # PDF 내 일러스트 페이지
         self.epub_illust_images_external_var = tk.StringVar() # 외부 일러스트 파일
 
-        # 입력 모드 선택 섹션
-        tk.Label(root, text="입력 방식:").grid(row=0, column=0, padx=10, pady=5, sticky="w")
-        tk.Radiobutton(root, text="폴더 일괄 처리", variable=self.input_mode, value="folder", command=self.update_input_widgets).grid(row=0, column=1, sticky="w", padx=5)
-        tk.Radiobutton(root, text="단일 파일 처리", variable=self.input_mode, value="file", command=self.update_input_widgets).grid(row=0, column=1, sticky="e", padx=5)
-        tk.Radiobutton(root, text="EPUB 생성 (PDF)", variable=self.input_mode, value="epub", command=self.update_input_widgets).grid(row=0, column=2, sticky="w", padx=5)
-
-        # 입력 경로 섹션 (동적 변경)
-        self.input_path_label = tk.Label(root, text="입력 폴더:")
+        # 입력 PDF 파일 섹션
+        self.input_path_label = tk.Label(root, text="입력 PDF 파일:")
         self.input_path_label.grid(row=1, column=0, padx=10, pady=5, sticky="w")
         self.input_path_entry = tk.Entry(root, textvariable=self.input_path_var, width=40)
         self.input_path_entry.grid(row=1, column=1, padx=10, pady=10)
         ToolTip(self.input_path_entry, "처리할 파일 또는 폴더의 경로입니다.")
-        self.input_path_button = tk.Button(root, text="폴더 찾기")
+        self.input_path_button = tk.Button(root, text="PDF 찾기", command=self.select_input_pdf_for_epub)
         self.input_path_button.grid(row=1, column=2, padx=10, pady=10)
         ToolTip(self.input_path_button, "파일 또는 폴더를 선택합니다.")
 
-        # 출력 경로 섹션 (동적 변경)
-        self.output_path_label = tk.Label(root, text="텍스트 출력 폴더:")
+        # EPUB 출력 파일 섹션
+        self.output_path_label = tk.Label(root, text="EPUB 출력 파일:")
         self.output_path_label.grid(row=2, column=0, padx=10, pady=10, sticky="w")
-        self.output_path_entry = tk.Entry(root, textvariable=self.output_folder_path, width=40) # 기본은 폴더 경로
+        self.output_path_entry = tk.Entry(root, textvariable=self.output_epub_path_var, width=40)
         self.output_path_entry.grid(row=2, column=1, padx=10, pady=10)
-        self.output_path_button = tk.Button(root, text="폴더 찾기", command=self.select_output_folder)
+        ToolTip(self.output_path_entry, "생성될 EPUB 파일의 전체 경로입니다. (.epub)")
+        self.output_path_button = tk.Button(root, text="저장 경로", command=self.select_output_epub_file)
         self.output_path_button.grid(row=2, column=2, padx=10, pady=10)
+        ToolTip(self.output_path_button, "EPUB 저장 경로와 파일명을 선택합니다.")
 
         # 서비스 계정 JSON 파일 섹션
         credentials_label = tk.Label(root, text="서비스 계정 JSON:")
@@ -114,7 +106,7 @@ class OCRApp:
 
         # EPUB 생성 옵션 섹션 (동적 표시)
         self.epub_options_frame = tk.Frame(root)
-        # grid는 update_input_widgets에서 호출 시점에 따라 설정
+        self.epub_options_frame.grid(row=4, column=0, columnspan=3, padx=10, pady=5, sticky="ew") # 항상 표시
 
         tk.Label(self.epub_options_frame, text="EPUB 제목:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
         tk.Entry(self.epub_options_frame, textvariable=self.epub_title_var, width=30).grid(row=0, column=1, padx=5, pady=5, sticky="ew")
@@ -136,70 +128,16 @@ class OCRApp:
 
 
         # 처리 시작 버튼
-        self.process_button = tk.Button(root, text="OCR 처리 시작", command=self.start_processing_thread)
+        self.process_button = tk.Button(root, text="EPUB 생성 시작", command=self.start_processing_thread)
         self.process_button.grid(row=6, column=0, columnspan=3, pady=20) # row 변경
-        ToolTip(self.process_button, "입력된 정보를 바탕으로 OCR 처리를 시작합니다.")
+        ToolTip(self.process_button, "입력된 정보를 바탕으로 EPUB 생성을 시작합니다.")
 
         # 상태 메시지 레이블
         self.status_label = tk.Label(root, text="")
         self.status_label.grid(row=7, column=0, columnspan=3, pady=10) # row 변경
 
-        self.update_input_widgets() # 초기 위젯 상태 설정
         app_logger.info("OCRApp GUI 초기화 완료.")
 
-    def update_input_widgets(self):
-        mode = self.input_mode.get()
-        if mode == "folder":
-            self.epub_options_frame.grid_remove() # EPUB 옵션 숨기기
-            self.input_path_label.config(text="입력 폴더:")
-            self.input_path_button.config(text="폴더 찾기", command=self.select_input_folder)
-            self.output_path_label.config(text="텍스트 출력 폴더:")
-            self.output_path_entry.config(textvariable=self.output_folder_path)
-            self.output_path_button.config(text="폴더 찾기", command=self.select_output_folder)
-            self.process_button.config(text="OCR 처리 시작")
-            ToolTip(self.output_path_entry, "OCR 결과 텍스트 파일이 저장될 폴더입니다.")
-            ToolTip(self.output_path_button, "출력 폴더를 선택합니다.")
-        elif mode == "file":
-            self.epub_options_frame.grid_remove() # EPUB 옵션 숨기기
-            self.input_path_label.config(text="입력 파일:")
-            self.input_path_button.config(text="파일 찾기", command=self.select_input_file)
-            self.output_path_label.config(text="텍스트 출력 폴더:")
-            self.output_path_entry.config(textvariable=self.output_folder_path)
-            self.output_path_button.config(text="폴더 찾기", command=self.select_output_folder)
-            self.process_button.config(text="OCR 처리 시작")
-            ToolTip(self.output_path_entry, "OCR 결과 텍스트 파일이 저장될 폴더입니다.")
-            ToolTip(self.output_path_button, "출력 폴더를 선택합니다.")
-        elif mode == "epub":
-            self.epub_options_frame.grid(row=4, column=0, columnspan=3, padx=10, pady=5, sticky="ew") # EPUB 옵션 표시
-            self.input_path_label.config(text="입력 PDF 파일:")
-            self.input_path_button.config(text="PDF 찾기", command=self.select_input_pdf_for_epub)
-            self.output_path_label.config(text="EPUB 출력 파일:")
-            self.output_path_entry.config(textvariable=self.output_epub_path_var)
-            self.output_path_button.config(text="저장 경로", command=self.select_output_epub_file)
-            self.process_button.config(text="EPUB 생성 시작")
-            ToolTip(self.output_path_entry, "생성될 EPUB 파일의 전체 경로입니다. (.epub)")
-            ToolTip(self.output_path_button, "EPUB 저장 경로와 파일명을 선택합니다.")
-
-        self.input_path_var.set("") # 모드 변경 시 입력 경로 초기화
-        self.output_folder_path.set("")
-        self.output_epub_path_var.set("")
-        app_logger.debug(f"입력 위젯 업데이트됨. 모드: {mode}")
-
-    def select_input_folder(self):
-        folder_selected = filedialog.askdirectory()
-        if folder_selected:
-            self.input_path_var.set(folder_selected)
-            # 폴더 모드일 때 기본 출력 폴더명 제안
-            base_name = os.path.basename(folder_selected)
-            suggested_output = os.path.join(os.path.dirname(folder_selected), f"{base_name}_ocr_results")
-            self.output_folder_path.set(suggested_output)
-            app_logger.info(f"입력 폴더 선택됨: {folder_selected}")
-
-    def select_output_folder(self):
-        folder_selected = filedialog.askdirectory()
-        if folder_selected:
-            self.output_folder_path.set(folder_selected)
-            app_logger.info(f"출력 폴더 선택됨: {folder_selected}")
 
     def select_output_epub_file(self):
         file_selected = filedialog.asksaveasfilename(
@@ -229,20 +167,6 @@ class OCRApp:
             self.input_path_var.set(file_selected)
             app_logger.info(f"EPUB 생성용 PDF 파일 선택됨: {file_selected}")
 
-    def select_input_file(self):
-        file_selected = filedialog.askopenfilename(
-            title="입력 파일 선택",
-            filetypes=(
-                ("지원되는 파일", "*.pdf *.png *.jpg *.jpeg *.bmp *.tiff *.gif"),
-                ("PDF files", "*.pdf"),
-                ("Image files", "*.png *.jpg *.jpeg *.bmp *.tiff *.gif"),
-                ("All files", "*.*")
-            )
-        )
-        if file_selected:
-            self.input_path_var.set(file_selected)
-            app_logger.info(f"입력 파일 선택됨: {file_selected}")
-
     def select_external_illust_files(self):
         files_selected = filedialog.askopenfilenames(
             title="외부 일러스트 이미지 파일 선택",
@@ -260,35 +184,31 @@ class OCRApp:
 
     def start_processing_thread(self):
         input_path = self.input_path_var.get()
+        output_path = self.output_epub_path_var.get()
         credentials_file = self.credentials_path_var.get()
-        mode = self.input_mode.get()
-        output_path = self.output_folder_path.get() if mode != "epub" else self.output_epub_path_var.get()
 
-        app_logger.info(f"OCR 처리 시작 요청. 모드: {mode}, 입력: {input_path}, 출력: {output_folder}, 인증파일: {credentials_file}")
+        app_logger.info(f"EPUB 생성 시작 요청. 입력 PDF: {input_path}, 출력 EPUB: {output_path}, 인증파일: {credentials_file}")
 
         if not input_path:
-            err_msg = "입력 폴더를 선택해주세요." if mode == "folder" else "입력 파일을 선택해주세요."
+            err_msg = "입력 PDF 파일을 선택해주세요."
             app_logger.warning(f"입력 경로 누락: {err_msg}")
             messagebox.showerror("오류", err_msg)
             return
 
         if not output_path:
-            if mode == "epub":
-                err_msg = "EPUB 출력 파일을 선택해주세요."
-            else:
-                err_msg = "출력 폴더를 선택해주세요."
+            err_msg = "EPUB 출력 파일을 선택해주세요."
             app_logger.warning(f"출력 경로 누락: {err_msg}")
             messagebox.showerror("오류", err_msg)
             return
 
         if not credentials_file:
             err_msg = "서비스 계정 JSON 파일을 선택해주세요."
-            app_logger.warning(f"서비스 계정 파일 누락: {err_msg}")
+            app_logger.warning(f"서비스 계정 파일 누락: {err_msg}") # 이 부분은 유지 (인증은 필요)
             messagebox.showerror("오류", err_msg)
             return
 
-        if not ocr_os.path.exists(input_path):
-            err_msg = f"입력 폴더를 찾을 수 없습니다: {input_path}" if mode == "folder" else f"입력 파일을 찾을 수 없습니다: {input_path}"
+        if not ocr_os.path.exists(input_path): # 입력 PDF 파일 존재 여부 확인
+            err_msg = f"입력 PDF 파일을 찾을 수 없습니다: {input_path}"
             app_logger.error(err_msg)
             messagebox.showerror("오류", err_msg)
             return
@@ -304,30 +224,27 @@ class OCRApp:
 
         self.process_button.config(state=tk.DISABLED)
         self.status_label.config(text="처리 중...")
-        app_logger.info("OCR 처리 스레드 시작 중...")
+        app_logger.info("EPUB 생성 스레드 시작 중...")
 
-        if mode == "epub":
-            epub_title = self.epub_title_var.get()
-            epub_author = self.epub_author_var.get()
-            illust_pages_pdf_str = self.epub_illust_pages_pdf_var.get()
-            illust_images_ext_str = self.epub_illust_images_external_var.get()
+        epub_title = self.epub_title_var.get()
+        epub_author = self.epub_author_var.get()
+        illust_pages_pdf_str = self.epub_illust_pages_pdf_var.get()
+        illust_images_ext_str = self.epub_illust_images_external_var.get()
 
-            illust_pages_pdf = []
-            if illust_pages_pdf_str:
-                try:
-                    illust_pages_pdf = [int(p.strip()) for p in illust_pages_pdf_str.split(',') if p.strip().isdigit()]
-                except ValueError:
-                    messagebox.showerror("오류", "PDF 내 일러스트 페이지 번호는 숫자로, 쉼표로 구분하여 입력해주세요.")
-                    self.process_button.config(state=tk.NORMAL)
-                    self.status_label.config(text="준비")
-                    return
-            
-            illust_images_ext = [p.strip() for p in illust_images_ext_str.split(',') if p.strip()] if illust_images_ext_str else []
+        illust_pages_pdf = []
+        if illust_pages_pdf_str:
+            try:
+                illust_pages_pdf = [int(p.strip()) for p in illust_pages_pdf_str.split(',') if p.strip().isdigit()]
+            except ValueError:
+                messagebox.showerror("오류", "PDF 내 일러스트 페이지 번호는 숫자로, 쉼표로 구분하여 입력해주세요.")
+                self.process_button.config(state=tk.NORMAL)
+                self.status_label.config(text="준비")
+                return
+        
+        illust_images_ext = [p.strip() for p in illust_images_ext_str.split(',') if p.strip()] if illust_images_ext_str else []
 
-            thread = threading.Thread(target=self.run_epub_processing,
-                                      args=(input_path, output_path, epub_title, epub_author, illust_pages_pdf, illust_images_ext))
-        else:
-            thread = threading.Thread(target=self.run_ocr_processing, args=(mode, input_path, output_path))
+        thread = threading.Thread(target=self.run_epub_processing,
+                                    args=(input_path, output_path, epub_title, epub_author, illust_pages_pdf, illust_images_ext))
         
         thread.daemon = True
         thread.start()
@@ -353,39 +270,6 @@ class OCRApp:
             self.process_button.config(state=tk.NORMAL)
             self.root.after(0, self.update_gui_after_processing)
             app_logger.info("EPUB 생성 스레드 종료.")
-
-    def run_ocr_processing(self, mode, input_path, output_path): # output_folder -> output_path
-        app_logger.info(f"OCR 처리 스레드 실행. 모드: {mode}, 입력: {input_path}")
-        try:
-            if mode == "folder":
-                process_images_in_folder(input_path, output_path)
-                self.status_label.config(text="폴더 내 모든 이미지 처리 완료!")
-                messagebox.showinfo("완료", f"폴더 '{input_path}' 내의 모든 이미지 파일 처리가 완료되었습니다.\n결과는 '{output_path}' 폴더에 저장되었습니다.")
-                app_logger.info(f"폴더 내 모든 이미지 처리 완료: {input_path}")
-            elif mode == "file":
-                file_extension = ocr_os.path.splitext(input_path)[1].lower()
-                if file_extension == ".pdf":
-                    process_pdf(input_path, output_path)
-                    self.status_label.config(text="PDF 파일 처리 완료!")
-                    messagebox.showinfo("완료", f"PDF 파일 '{ocr_os.path.basename(input_path)}' 처리가 완료되었습니다.\n결과는 '{output_path}' 폴더에 저장되었습니다.")
-                    app_logger.info(f"PDF 파일 처리 완료: {input_path}")
-                elif file_extension in [".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".gif"]:
-                    process_single_image_file(input_path, output_path)
-                    self.status_label.config(text="이미지 파일 처리 완료!")
-                    messagebox.showinfo("완료", f"이미지 파일 '{ocr_os.path.basename(input_path)}' 처리가 완료되었습니다.\n결과는 '{output_path}' 폴더에 저장되었습니다.")
-                    app_logger.info(f"이미지 파일 처리 완료: {input_path}")
-                else:
-                    self.status_label.config(text="지원하지 않는 파일 형식")
-                    messagebox.showerror("오류", f"지원하지 않는 파일 형식입니다: {file_extension}\nPDF 또는 이미지 파일을 선택해주세요.")
-                    app_logger.warning(f"지원하지 않는 파일 형식: {input_path}, 확장자: {file_extension}")
-        except Exception as e:
-            self.status_label.config(text=f"오류 발생: {e}")
-            messagebox.showerror("처리 오류", f"OCR 처리 중 오류가 발생했습니다: {e}")
-            app_logger.error(f"OCR 처리 중 오류 발생: {e}", exc_info=True)
-        finally:
-            self.process_button.config(state=tk.NORMAL)
-            self.root.after(0, self.update_gui_after_processing)
-            app_logger.info("OCR 처리 스레드 종료.")
 
     def update_gui_after_processing(self):
         if "완료" in self.status_label.cget("text"):

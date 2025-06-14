@@ -16,6 +16,36 @@ except ImportError:
 #     messagebox.showwarning("경고", "GOOGLE_APPLICATION_CREDENTIALS 환경 변수가 설정되지 않았습니다. "
 #                                   "이 창에서 직접 설정하거나, ocr_service.py 또는 시스템 환경 변수로 설정해주세요.")
 
+class ToolTip:
+    """
+    Create a tooltip for a given widget.
+    """
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tooltip_window = None
+        self.widget.bind("<Enter>", self.show_tooltip)
+        self.widget.bind("<Leave>", self.hide_tooltip)
+
+    def show_tooltip(self, event=None):
+        x, y, _, _ = self.widget.bbox("insert")
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 25
+
+        self.tooltip_window = tk.Toplevel(self.widget)
+        self.tooltip_window.wm_overrideredirect(True)
+        self.tooltip_window.wm_geometry(f"+{x}+{y}")
+
+        label = tk.Label(self.tooltip_window, text=self.text, justify='left',
+                         background="#ffffe0", relief='solid', borderwidth=1,
+                         font=("tahoma", "8", "normal"))
+        label.pack(ipadx=1)
+
+    def hide_tooltip(self, event=None):
+        if self.tooltip_window:
+            self.tooltip_window.destroy()
+        self.tooltip_window = None
+
 class OCRApp:
     def __init__(self, root):
         self.root = root
@@ -37,22 +67,35 @@ class OCRApp:
         self.input_path_label.grid(row=1, column=0, padx=10, pady=5, sticky="w")
         self.input_path_entry = tk.Entry(root, textvariable=self.input_path_var, width=40)
         self.input_path_entry.grid(row=1, column=1, padx=10, pady=10)
+        ToolTip(self.input_path_entry, "처리할 파일 또는 폴더의 경로입니다.")
         self.input_path_button = tk.Button(root, text="폴더 찾기")
         self.input_path_button.grid(row=1, column=2, padx=10, pady=10)
+        ToolTip(self.input_path_button, "파일 또는 폴더를 선택합니다.")
 
         # 출력 폴더 섹션
-        tk.Label(root, text="텍스트 출력 폴더:").grid(row=2, column=0, padx=10, pady=10, sticky="w")
-        tk.Entry(root, textvariable=self.output_folder_path, width=40).grid(row=2, column=1, padx=10, pady=10)
-        tk.Button(root, text="찾아보기", command=self.select_output_folder).grid(row=2, column=2, padx=10, pady=10)
+        output_folder_label = tk.Label(root, text="텍스트 출력 폴더:")
+        output_folder_label.grid(row=2, column=0, padx=10, pady=10, sticky="w")
+        output_folder_entry = tk.Entry(root, textvariable=self.output_folder_path, width=40)
+        output_folder_entry.grid(row=2, column=1, padx=10, pady=10)
+        ToolTip(output_folder_entry, "OCR 결과 텍스트 파일이 저장될 폴더입니다.")
+        output_folder_button = tk.Button(root, text="찾아보기", command=self.select_output_folder)
+        output_folder_button.grid(row=2, column=2, padx=10, pady=10)
+        ToolTip(output_folder_button, "출력 폴더를 선택합니다.")
 
         # 서비스 계정 JSON 파일 섹션
-        tk.Label(root, text="서비스 계정 JSON:").grid(row=3, column=0, padx=10, pady=5, sticky="w")
-        tk.Entry(root, textvariable=self.credentials_path_var, width=40).grid(row=3, column=1, padx=10, pady=10)
-        tk.Button(root, text="찾아보기", command=self.select_credentials_file).grid(row=3, column=2, padx=10, pady=10)
+        credentials_label = tk.Label(root, text="서비스 계정 JSON:")
+        credentials_label.grid(row=3, column=0, padx=10, pady=5, sticky="w")
+        credentials_entry = tk.Entry(root, textvariable=self.credentials_path_var, width=40)
+        credentials_entry.grid(row=3, column=1, padx=10, pady=10)
+        ToolTip(credentials_entry, "Google Cloud Vision API 서비스 계정의 JSON 키 파일 경로입니다.")
+        credentials_button = tk.Button(root, text="찾아보기", command=self.select_credentials_file)
+        credentials_button.grid(row=3, column=2, padx=10, pady=10)
+        ToolTip(credentials_button, "서비스 계정 JSON 파일을 선택합니다.")
 
         # 처리 시작 버튼
         self.process_button = tk.Button(root, text="OCR 처리 시작", command=self.start_processing_thread)
         self.process_button.grid(row=4, column=0, columnspan=3, pady=20)
+        ToolTip(self.process_button, "입력된 정보를 바탕으로 OCR 처리를 시작합니다.")
 
         # 상태 메시지 레이블
         self.status_label = tk.Label(root, text="")

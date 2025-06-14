@@ -199,7 +199,7 @@ class EpubCreatorAppPyQt(QMainWindow):
             parent_dir = os.path.dirname(folder_path)
             folder_name = os.path.basename(folder_path)
             default_output_name = f"{folder_name}_ocr.epub"
-            default_output_path = os.path.join(parent_dir, default_output_name) # 폴더와 같은 레벨에 생성
+            default_output_path = os.path.normpath(os.path.join(parent_dir, default_output_name)) # 폴더와 같은 레벨에 생성하고 정규화
             self.output_epub_path_edit.setText(default_output_path)
             app_logger.info(f"EPUB 출력 경로 기본값 설정됨 (폴더 모드): {default_output_path}")
 

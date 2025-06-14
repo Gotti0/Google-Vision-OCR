@@ -152,27 +152,27 @@ class EpubProcessor:
         # 외부 일러스트 이미지 추가
         for idx, img_path in enumerate(self.illustration_images):
             if os.path.exists(img_path):
-                normalized_img_path = os.path.normpath(img_path_orig) # 이미 __init__에서 정규화되었지만, 일관성을 위해 다시 호출
+                normalized_img_path = os.path.normpath(img_path) # 이미 __init__에서 정규화되었지만, 일관성을 위해 다시 호출
                 # 이미지 폴더 모드에서 이미 폴더 내 일러스트로 지정된 경우 중복 방지
                 if self.is_image_folder and normalized_img_path in [item.original_path for item in processed_page_items if item.type == 'image']:
                     app_logger.info(f"외부 일러스트 '{img_path}'는 이미 폴더 내 지정 일러스트로 처리됨. 중복 추가 안함.")
                     continue
                 
-                temp_ext_img_name = f"ext_illust_{idx}{os.path.splitext(img_path)[1]}"
+                temp_ext_img_name = f"ext_illust_{idx}{os.path.splitext(img_path)[1]}" # img_path 사용
                 temp_ext_img_path = os.path.join(self.temp_dir, temp_ext_img_name)
                 try:
                     shutil.copy(img_path, temp_ext_img_path)
-                    app_logger.info(f"외부 일러스트 이미지 추가: {img_path_orig} -> {temp_ext_img_path}")
+                    app_logger.info(f"외부 일러스트 이미지 추가: {img_path} -> {temp_ext_img_path}")
                     processed_page_items.append(ProcessedPageItem(
                         type='image', path=temp_ext_img_path,
                         id=f'img_ext_{idx}', page_num=len(source_page_data_list) + idx + 1, # 페이지 번호는 기존 페이지 수 이후로
                         original_path=normalized_img_path # 정규화된 경로 저장
                     ))
                 except Exception as e:
-                    app_logger.warning(f"외부 일러스트 파일 복사 실패 '{img_path_orig}': {e}")
+                    app_logger.warning(f"외부 일러스트 파일 복사 실패 '{img_path}': {e}")
                     # 오류를 발생시키지 않고 경고만 로깅 후 계속 진행할 수 있음
             else:
-                app_logger.warning(f"외부 일러스트 이미지 파일을 찾을 수 없음: {img_path_orig}")
+                app_logger.warning(f"외부 일러스트 이미지 파일을 찾을 수 없음: {img_path}")
 
         # 페이지 번호 기준으로 정렬
         processed_page_items.sort(key=lambda item: item.page_num)

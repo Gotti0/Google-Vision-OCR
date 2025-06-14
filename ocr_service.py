@@ -100,22 +100,25 @@ def process_pdf(pdf_path, output_folder):
             text_file.write(text)
             text_file.write("\n\n")
 
-def process_all_pdfs(input_folder, output_folder):
+def process_images_in_folder(input_folder, output_folder):
     """
-    Processes all PDFs in the input folder and stores the results in the output folder.
+    Processes all image files (png, jpg, jpeg, bmp, tiff, gif) in the input folder
+    and stores the results in the output folder.
     
     Args:
-        input_folder (str): The folder containing PDF files.
+        input_folder (str): The folder containing image files.
         output_folder (str): The folder where the output text files will be saved.
     """
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
+    supported_image_extensions = ('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.gif')
+
     for file_name in os.listdir(input_folder):
-        if file_name.endswith(".pdf"):
-            pdf_path = os.path.join(input_folder, file_name)
-            print(f"Processing {pdf_path}...")
-            process_pdf(pdf_path, output_folder)
+        if file_name.lower().endswith(supported_image_extensions):
+            image_path = os.path.join(input_folder, file_name)
+            print(f"Processing image {image_path}...")
+            process_single_image_file(image_path, output_folder) # 각 이미지 파일 처리
 
 def process_single_image_file(image_path, output_folder):
     """
@@ -155,5 +158,5 @@ def process_single_image_file(image_path, output_folder):
 if __name__ == "__main__":
     input_folder = r"" #add the path of the folder that contains the pdf 
     output_folder = r"" #add the path of the output folder 
-    # process_all_pdfs(input_folder, output_folder) # GUI에서 실행하므로 주석 처리 또는 테스트용으로 남김
+    # process_images_in_folder(input_folder, output_folder) # GUI에서 실행하므로 주석 처리 또는 테스트용으로 남김
     # print("Text extraction completed!")

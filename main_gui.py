@@ -6,7 +6,7 @@ import os
 # ocr_service 모듈이 같은 디렉토리에 있다고 가정합니다.
 # 그렇지 않은 경우, sys.path를 수정하거나 ocr_service.py의 경로를 정확히 명시해야 합니다.
 try:
-    from ocr_service import process_all_pdfs, process_pdf, process_single_image_file, os as ocr_os
+    from ocr_service import process_images_in_folder, process_pdf, process_single_image_file, os as ocr_os
 except ImportError:
     messagebox.showerror("오류", "ocr_service.py를 찾을 수 없습니다. 같은 디렉토리에 있는지 확인하세요.")
     exit()
@@ -145,9 +145,9 @@ class OCRApp:
     def run_ocr_processing(self, mode, input_path, output_folder):
         try:
             if mode == "folder":
-                process_all_pdfs(input_path, output_folder)
-                self.status_label.config(text="폴더 내 모든 PDF 처리 완료!")
-                messagebox.showinfo("완료", f"폴더 '{input_path}' 내의 모든 PDF 파일 처리가 완료되었습니다.\n결과는 '{output_folder}' 폴더에 저장되었습니다.")
+                process_images_in_folder(input_path, output_folder) # 변경된 함수 호출
+                self.status_label.config(text="폴더 내 모든 이미지 처리 완료!")
+                messagebox.showinfo("완료", f"폴더 '{input_path}' 내의 모든 이미지 파일 처리가 완료되었습니다.\n결과는 '{output_folder}' 폴더에 저장되었습니다.")
             elif mode == "file":
                 file_extension = ocr_os.path.splitext(input_path)[1].lower()
                 if file_extension == ".pdf":

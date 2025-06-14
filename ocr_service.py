@@ -8,6 +8,7 @@ from pdf2image import convert_from_path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from logger import app_logger # 로거 임포트
 from config_manager import config_manager # ConfigManager 임포트
+from exceptions import OCRError, FileOperationError # 사용자 정의 예외 임포트
 from dtos import OcrInputItem # OcrInputItem DTO 임포트
 
 # The environment variable for Google Vision API credentials
@@ -38,9 +39,12 @@ def detect_text_from_image(image_data):
         else:
             app_logger.info("감지된 텍스트 없음.")
             return ""
+    except vision.exceptions.GoogleCloudError as e: # Google Cloud 관련 명시적 예외 처리
+        app_logger.error(f"Google Vision API 호출 중 GoogleCloudError 발생: {e}", exc_info=True)
+        raise OCRError(f"Google Vision API 오류: {e}")
     except Exception as e:
         app_logger.error(f"Google Vision API 텍스트 감지 중 오류: {e}", exc_info=True)
-        raise
+        raise OCRError(f"OCR 처리 중 예상치 못한 오류 발생: {e}")
 
 def preprocess_image(image):
     """
@@ -61,7 +65,7 @@ def preprocess_image(image):
         return processed_image
     except Exception as e:
         app_logger.error(f"이미지 전처리 중 오류: {e}", exc_info=True)
-        raise
+        raise OCRError(f"이미지 전처리 중 오류: {e}")
 
 def process_page(page, page_number):
     """
@@ -87,7 +91,7 @@ def process_page(page, page_number):
     except Exception as e:
         app_logger.error(f"{page_number} 페이지 처리 중 오류: {e}", exc_info=True)
         # 오류 발생 시 빈 텍스트와 함께 페이지 번호 반환 또는 예외를 다시 발생시켜 상위에서 처리
-        return (page_number, f"Error processing page {page_number}: {e}")
+        raise OCRError(f"{page_number} 페이지 처리 중 오류: {e}")
         
 def process_pdf(pdf_path, output_folder):
     """
@@ -120,7 +124,7 @@ def process_pdf(pdf_path, output_folder):
     except Exception as e:
         app_logger.error(f"PDF 처리 중 오류 ({pdf_path}): {e}", exc_info=True)
         # GUI에서 이 오류를 잡아서 사용자에게 알릴 수 있도록 raise
-        raise
+        raise OCRError(f"PDF '{pdf_path}' 처리 중 오류: {e}")
         
 def process_images_in_folder(input_folder, output_folder):
     """
@@ -147,7 +151,7 @@ def process_images_in_folder(input_folder, output_folder):
         app_logger.info(f"폴더 내 이미지 일괄 처리 완료. 총 {image_files_processed}개 파일 처리됨: {input_folder}")
     except Exception as e:
         app_logger.error(f"폴더 내 이미지 일괄 처리 중 오류 ({input_folder}): {e}", exc_info=True)
-        raise
+        raise OCRError(f"이미지 폴더 '{input_folder}' 처리 중 오류: {e}")
         
 def process_single_image_file(image_path, output_folder):
     """
@@ -186,10 +190,10 @@ def process_single_image_file(image_path, output_folder):
         app_logger.info(f"텍스트 추출 완료 및 저장: {output_text_file}")
     except FileNotFoundError:
         app_logger.error(f"이미지 파일을 찾을 수 없음: {image_path}")
-        raise
+        raise FileOperationError(f"이미지 파일을 찾을 수 없음: {image_path}")
     except Exception as e:
         app_logger.error(f"단일 이미지 파일 처리 중 오류 ({image_path}): {e}", exc_info=True)
-        raise
+        raise OCRError(f"단일 이미지 파일 '{image_path}' 처리 중 오류: {e}")
 
 def ocr_pil_images_batch(pil_images_with_identifiers):
     """
@@ -221,7 +225,7 @@ def ocr_pil_images_batch(pil_images_with_identifiers):
                 app_logger.debug(f"이미지 ID '{identifier}' OCR 완료.")
             except Exception as exc:
                 app_logger.error(f"이미지 ID '{identifier}' 처리 중 오류: {exc}", exc_info=True)
-                results.append({'id': identifier, 'text': f"Error processing image ID {identifier}: {exc}"})
+                results.append({'id': identifier, 'text': f"OCR Error for ID {identifier}: {exc}"}) # 오류 발생 시 텍스트에 명시
     app_logger.info("배치 OCR 처리 완료.")
     return results
 

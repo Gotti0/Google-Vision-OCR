@@ -7,6 +7,7 @@ from pdf2image import convert_from_path
 from logger import app_logger
 from config_manager import config_manager # ConfigManager 임포트
 from ocr_service import ocr_pil_images_batch # 새로운 배치 OCR 함수 사용
+from exceptions import EpubProcessingError, FileOperationError, OCRError # 사용자 정의 예외 임포트
 from dtos import PageDataSource, OcrInputItem, ProcessedPageItem # DTO 임포트
 
 class EpubProcessor:
@@ -27,7 +28,11 @@ class EpubProcessor:
         self.illustration_pages = set(illustration_pages) if illustration_pages else set()
         self.illustration_images = illustration_images if illustration_images else []
         self.is_image_folder = is_image_folder
-        self.temp_dir = tempfile.mkdtemp()
+        try:
+            self.temp_dir = tempfile.mkdtemp(prefix="epub_proc_")
+        except Exception as e:
+            app_logger.error(f"임시 디렉토리 생성 실패: {e}", exc_info=True)
+            raise FileOperationError(f"임시 디렉토리 생성에 실패했습니다: {e}")
         app_logger.info(f"EpubProcessor 초기화: 입력='{input_source}', EPUB='{output_epub_path}', 임시폴더='{self.temp_dir}', 이미지폴더모드={is_image_folder}")
         app_logger.info(f"일러스트 페이지 (PDF 내): {self.illustration_pages}")
         app_logger.info(f"일러스트 이미지 (외부 파일): {self.illustration_images}")
@@ -37,8 +42,12 @@ class EpubProcessor:
         PDF 파일에서 페이지들을 PIL 이미지 객체 리스트로 로드합니다.
         """
         app_logger.info(f"'{self.input_source}' (PDF)에서 페이지 추출 시작...")
-        pil_images = convert_from_path(self.input_source, output_folder=self.temp_dir, fmt='jpeg', paths_only=False)
-        return [PageDataSource(path=f"pdf_page_{i+1}", pil_image=pil_img, original_index=i) for i, pil_img in enumerate(pil_images)]
+        try:
+            pil_images = convert_from_path(self.input_source, output_folder=self.temp_dir, fmt='jpeg', paths_only=False)
+            return [PageDataSource(path=f"pdf_page_{i+1}", pil_image=pil_img, original_index=i) for i, pil_img in enumerate(pil_images)]
+        except Exception as e:
+            app_logger.error(f"PDF '{self.input_source}' 페이지 추출 중 오류: {e}", exc_info=True)
+            raise FileOperationError(f"PDF '{self.input_source}'에서 페이지를 추출하는 중 오류가 발생했습니다: {e}")
 
     def _load_images_from_folder(self):
         """
@@ -49,8 +58,12 @@ class EpubProcessor:
         for i, img_path in enumerate(self.input_source): # self.input_source는 이미지 파일 경로 리스트
             try:
                 loaded_images.append(PageDataSource(path=img_path, pil_image=Image.open(img_path), original_index=i))
+            except FileNotFoundError:
+                app_logger.error(f"이미지 파일 로드 실패 (파일 없음): '{img_path}'")
+                raise FileOperationError(f"이미지 파일 '{img_path}'를 찾을 수 없습니다.")
             except Exception as e:
-                app_logger.error(f"이미지 파일 로드 실패 '{img_path}': {e}")
+                app_logger.error(f"이미지 파일 로드 실패 '{img_path}': {e}", exc_info=True)
+                raise FileOperationError(f"이미지 파일 '{img_path}'을 로드하는 중 오류가 발생했습니다: {e}")
         return loaded_images
 
     def _determine_ocr_and_illust_items(self, source_page_data_list: list[PageDataSource]) -> tuple[list[OcrInputItem], list[ProcessedPageItem]]:
@@ -69,7 +82,11 @@ class EpubProcessor:
             # 임시 폴더에 이미지 저장 (모든 페이지/이미지에 대해)
             temp_image_filename = f"page_{page_number_for_processing}.jpg"
             temp_image_path = os.path.join(self.temp_dir, temp_image_filename)
-            pil_image.save(temp_image_path, "JPEG")
+            try:
+                pil_image.save(temp_image_path, "JPEG")
+            except Exception as e:
+                app_logger.error(f"임시 이미지 파일 저장 실패 '{temp_image_path}': {e}", exc_info=True)
+                raise FileOperationError(f"임시 이미지 파일 '{temp_image_filename}' 저장 중 오류: {e}")
 
             is_designated_illust = False
             item_id_prefix = "page_" # 기본 ID 접두사
@@ -102,10 +119,23 @@ class EpubProcessor:
         else:
             source_page_data_list = self._load_images_from_folder()
 
-        ocr_input_items, processed_page_items = self._determine_ocr_and_illust_items(source_page_data_list)
+        try:
+            ocr_input_items, processed_page_items = self._determine_ocr_and_illust_items(source_page_data_list)
+        except FileOperationError: # _determine_ocr_and_illust_items 내부에서 발생한 FileOperationError는 그대로 전달
+            raise
+        except Exception as e:
+            app_logger.error(f"OCR/일러스트 아이템 결정 중 오류: {e}", exc_info=True)
+            raise EpubProcessingError(f"페이지 처리 중 오류 발생: {e}")
 
         if ocr_input_items:
-            ocr_results = ocr_pil_images_batch(ocr_input_items) # [{'id': 식별자, 'text': 추출된 텍스트}] 반환
+            try:
+                ocr_results = ocr_pil_images_batch(ocr_input_items) # [{'id': 식별자, 'text': 추출된 텍스트}] 반환
+            except OCRError: # ocr_service에서 발생한 OCRError는 그대로 전달
+                raise
+            except Exception as e: # ocr_pil_images_batch의 예상치 못한 다른 오류
+                app_logger.error(f"배치 OCR 호출 중 예상치 못한 오류: {e}", exc_info=True)
+                raise OCRError(f"배치 OCR 처리 중 오류: {e}")
+                
             for result in ocr_results:
                 # ocr_input_items에서 original_path를 찾아 매핑
                 ocr_item_origin = next((item for item in ocr_input_items if item.id == result['id']), None)
@@ -127,13 +157,17 @@ class EpubProcessor:
                 
                 temp_ext_img_name = f"ext_illust_{idx}{os.path.splitext(img_path)[1]}"
                 temp_ext_img_path = os.path.join(self.temp_dir, temp_ext_img_name)
-                shutil.copy(img_path, temp_ext_img_path)
-                app_logger.info(f"외부 일러스트 이미지 추가: {img_path} -> {temp_ext_img_path}")
-                processed_page_items.append(ProcessedPageItem(
-                    type='image', path=temp_ext_img_path,
-                    id=f'img_ext_{idx}', page_num=len(source_page_data_list) + idx + 1, # 페이지 번호는 기존 페이지 수 이후로
-                    original_path=img_path
-                ))
+                try:
+                    shutil.copy(img_path, temp_ext_img_path)
+                    app_logger.info(f"외부 일러스트 이미지 추가: {img_path} -> {temp_ext_img_path}")
+                    processed_page_items.append(ProcessedPageItem(
+                        type='image', path=temp_ext_img_path,
+                        id=f'img_ext_{idx}', page_num=len(source_page_data_list) + idx + 1, # 페이지 번호는 기존 페이지 수 이후로
+                        original_path=img_path
+                    ))
+                except Exception as e:
+                    app_logger.warning(f"외부 일러스트 파일 복사 실패 '{img_path}': {e}")
+                    # 오류를 발생시키지 않고 경고만 로깅 후 계속 진행할 수 있음
             else:
                 app_logger.warning(f"외부 일러스트 이미지 파일을 찾을 수 없음: {img_path}")
 

@@ -14,6 +14,7 @@ try:
     # epub_processor 모듈 임포트
     from epub_processor import EpubProcessor
     from app_service import ApplicationService # ApplicationService 임포트
+    from exceptions import ApplicationBaseException, ConfigError, FileOperationError, OCRError, EpubProcessingError # 사용자 정의 예외 임포트
     from ocr_service import os as ocr_os # ocr_service에서 os만 가져오도록 수정
 except ImportError as e:
     if "epub_processor" in str(e).lower():
@@ -326,6 +327,14 @@ class OCRApp:
             #     self.status_label.config(text="EPUB 파일 생성 실패.")
             #     messagebox.showerror("오류", "EPUB 파일 생성에 실패했습니다.")
             #     app_logger.error("EPUB 파일 생성 실패 (ApplicationService에서 False 반환).")
+        except (ConfigError, FileOperationError, OCRError, EpubProcessingError) as app_exc:
+            self.status_label.config(text=f"오류: {app_exc.message}")
+            messagebox.showerror("오류 발생", app_exc.message)
+            app_logger.error(f"처리 중 사용자 정의 예외 발생: {app_exc.message}", exc_info=True)
+        except ApplicationBaseException as base_exc: # ApplicationService에서 감싸서 보낸 예외
+            self.status_label.config(text=f"오류: {base_exc.message}")
+            messagebox.showerror("애플리케이션 오류", base_exc.message)
+            app_logger.error(f"처리 중 일반 애플리케이션 예외 발생: {base_exc.message}", exc_info=True)
         except Exception as e:
             self.status_label.config(text=f"EPUB 생성 오류: {e}")
             messagebox.showerror("EPUB 생성 오류", f"EPUB 생성 중 오류가 발생했습니다: {e}")

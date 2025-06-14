@@ -1,6 +1,7 @@
 import json
 import os
 from logger import app_logger
+from exceptions import ConfigError # 사용자 정의 예외 임포트
 
 CONFIG_FILE_NAME = "config.json"
 DEFAULT_CONFIG = {
@@ -35,12 +36,12 @@ class ConfigManager:
                     final_config.update(config)
                     return final_config
             except json.JSONDecodeError:
-                app_logger.error(f"설정 파일 ({self.config_file_path}) 파싱 오류. 기본 설정을 사용합니다.")
+                app_logger.error(f"설정 파일 ({self.config_file_path}) 파싱 오류. 기본 설정을 사용하고 파일을 덮어씁니다.")
                 self._save_config(DEFAULT_CONFIG) # 오류 발생 시 기본 설정으로 덮어쓰기 또는 백업 후 생성
-                return DEFAULT_CONFIG.copy()
+                raise ConfigError(f"설정 파일 ({self.config_file_path}) 파싱 오류.")
             except Exception as e:
                 app_logger.error(f"설정 파일 로드 중 알 수 없는 오류 발생: {e}. 기본 설정을 사용합니다.")
-                return DEFAULT_CONFIG.copy()
+                raise ConfigError(f"설정 파일 로드 중 알 수 없는 오류 발생: {e}")
         else:
             app_logger.info(f"설정 파일({self.config_file_path})을 찾을 수 없습니다. 기본 설정으로 새로 생성합니다.")
             self._save_config(DEFAULT_CONFIG)
@@ -53,7 +54,7 @@ class ConfigManager:
                 json.dump(config_data, f, ensure_ascii=False, indent=4)
             app_logger.info(f"설정이 파일에 저장됨: {self.config_file_path}")
         except Exception as e:
-            app_logger.error(f"설정 파일 저장 중 오류 발생: {e}")
+            raise ConfigError(f"설정 파일 저장 중 오류 발생: {e}")
 
     def get(self, key, default_value=None):
         """지정된 키에 해당하는 설정 값을 반환합니다. 없으면 기본값을 반환합니다."""

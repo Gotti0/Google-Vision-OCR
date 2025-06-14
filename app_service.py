@@ -4,6 +4,7 @@ from epub_processor import EpubProcessor
 # ocr_service는 epub_processor 내부에서 사용되므로 직접적인 의존성은 줄어들 수 있음
 # 필요한 경우 ocr_service의 특정 기능(예: 환경변수 설정)만 가져올 수 있음
 from ocr_service import os as ocr_os
+from exceptions import ApplicationBaseException, ConfigError, FileOperationError, OCRError, EpubProcessingError # 사용자 정의 예외 임포트
 
 class ApplicationService:
     def __init__(self):
@@ -20,7 +21,7 @@ class ApplicationService:
             return False
         else:
             app_logger.error(f"Google Cloud 인증 파일을 찾을 수 없음: {credentials_path}")
-            return False
+            raise FileOperationError(f"Google Cloud 인증 파일을 찾을 수 없음: {credentials_path}")
 
     def create_epub_from_source(self, input_source, output_epub_path, title, author,
                                 illustration_pages_pdf, illustration_images_ext,
@@ -48,10 +49,11 @@ class ApplicationService:
         # EpubProcessor 내부에서 OCR 호출 시점에 인증이 설정되어 있어야 함.
         if not is_image_folder_mode or (is_image_folder_mode and len(input_source) > len(illustration_images_ext)):
             if not self.set_google_credentials(credentials_path):
-                # 인증 설정 실패 시, OCR이 필요한 작업이면 여기서 중단하거나 경고 후 진행할 수 있음
-                app_logger.error("Google Cloud 인증 정보 설정 실패. OCR 작업이 실패할 수 있습니다.")
-                # GUI에서 이미 이 오류를 처리하고 있다면 여기서는 로깅만 할 수도 있음
-
+                # set_google_credentials에서 FileOperationError가 발생할 수 있음
+                # 또는 여기서 직접 FileOperationError를 발생시킬 수도 있음
+                # 여기서는 set_google_credentials가 False를 반환하면 (경고만 로깅된 경우)
+                # 추가적인 오류를 발생시키지 않고 진행하도록 둠 (EpubProcessor에서 OCR 시도 시 오류 발생 가능)
+                pass
         try:
             processor = EpubProcessor(
                 input_source=input_source,
@@ -63,9 +65,14 @@ class ApplicationService:
             processor.create_epub(title=title, author=author)
             app_logger.info(f"EPUB 생성 성공: {output_epub_path}")
             return True
+        except (ConfigError, OCRError, EpubProcessingError, FileOperationError) as app_exc:
+            # 이미 정의된 애플리케이션 예외는 그대로 전달
+            app_logger.error(f"애플리케이션 예외 발생: {app_exc.message}", exc_info=True)
+            raise
         except Exception as e:
+            # 예상치 못한 기타 예외는 ApplicationBaseException으로 감싸서 전달
             app_logger.error(f"EPUB 생성 중 ApplicationService에서 오류 발생: {e}", exc_info=True)
-            raise # GUI에서 처리할 수 있도록 예외를 다시 발생시킴
+            raise ApplicationBaseException(f"EPUB 생성 중 예상치 못한 오류: {e}")
 
 # 애플리케이션 서비스의 단일 인스턴스 (필요에 따라)
 # app_service_instance = ApplicationService()

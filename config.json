@@ -1,0 +1,8 @@
+{
+    "default_epub_title": "제목 없음",
+    "default_epub_author": "저자 미상",
+    "default_epub_language": "jp",
+    "max_ocr_workers": 4,
+    "temp_dir_base": null,
+    "log_level": "INFO"
+}

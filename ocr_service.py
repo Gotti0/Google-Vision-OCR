@@ -6,6 +6,7 @@ import cv2
 from google.cloud import vision
 from pdf2image import convert_from_path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from logger import app_logger # 로거 임포트
 
 # The environment variable for Google Vision API credentials
 # will be set by the GUI (ocr_gui.py) or should be set in the system environment.
@@ -21,18 +22,23 @@ def detect_text_from_image(image_data):
     Returns:
         str: The detected text.
     """
-    client = vision.ImageAnnotatorClient()
-    image = vision.Image(content=image_data)
+    try:
+        app_logger.debug("Google Vision API 클라이언트 생성 시도.")
+        client = vision.ImageAnnotatorClient()
+        image = vision.Image(content=image_data)
+        app_logger.debug("텍스트 감지 수행 중...")
+        response = client.text_detection(image=image)
+        texts = response.text_annotations
 
-    # Perform text detection
-    response = client.text_detection(image=image)
-    texts = response.text_annotations
-
-    # Extract and return the detected text (first annotation contains full text)
-    if texts:
-        return texts[0].description
-    else:
-        return ""
+        if texts:
+            app_logger.info("텍스트 감지 성공.")
+            return texts[0].description
+        else:
+            app_logger.info("감지된 텍스트 없음.")
+            return ""
+    except Exception as e:
+        app_logger.error(f"Google Vision API 텍스트 감지 중 오류: {e}", exc_info=True)
+        raise
 
 def preprocess_image(image):
     """
@@ -44,12 +50,16 @@ def preprocess_image(image):
     Returns:
         PIL.Image.Image: The preprocessed image.
     """
-    # Convert PIL image to OpenCV format
-    image_np = np.array(image)
-    gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
-    
-    # Convert back to PIL image
-    return Image.fromarray(gray)
+    try:
+        app_logger.debug("이미지 전처리 시작 (그레이스케일 변환).")
+        image_np = np.array(image)
+        gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+        processed_image = Image.fromarray(gray)
+        app_logger.debug("이미지 전처리 완료.")
+        return processed_image
+    except Exception as e:
+        app_logger.error(f"이미지 전처리 중 오류: {e}", exc_info=True)
+        raise
 
 def process_page(page, page_number):
     """
@@ -62,16 +72,20 @@ def process_page(page, page_number):
     Returns:
         tuple: A tuple containing the page number and extracted text.
     """
-    # Convert page to a BytesIO object
-    buffer = io.BytesIO()
-    page = preprocess_image(page)
-    page.save(buffer, format="PNG")
-    image_data = buffer.getvalue()
+    try:
+        app_logger.info(f"{page_number} 페이지 처리 시작.")
+        buffer = io.BytesIO()
+        processed_page = preprocess_image(page) # 전처리된 이미지 사용
+        processed_page.save(buffer, format="PNG")
+        image_data = buffer.getvalue()
 
-    # Perform OCR on the image data
-    extracted_text = detect_text_from_image(image_data)
-    
-    return (page_number, extracted_text)
+        extracted_text = detect_text_from_image(image_data)
+        app_logger.info(f"{page_number} 페이지 텍스트 추출 완료.")
+        return (page_number, extracted_text)
+    except Exception as e:
+        app_logger.error(f"{page_number} 페이지 처리 중 오류: {e}", exc_info=True)
+        # 오류 발생 시 빈 텍스트와 함께 페이지 번호 반환 또는 예외를 다시 발생시켜 상위에서 처리
+        return (page_number, f"Error processing page {page_number}: {e}")
 
 def process_pdf(pdf_path, output_folder):
     """
@@ -81,24 +95,30 @@ def process_pdf(pdf_path, output_folder):
         pdf_path (str): The path to the PDF file.
         output_folder (str): The folder where the output text file will be saved.
     """
-    # Convert PDF to images
-    pages = convert_from_path(pdf_path)
+    app_logger.info(f"PDF 처리 시작: {pdf_path}")
+    try:
+        pages = convert_from_path(pdf_path)
+        app_logger.info(f"PDF를 이미지로 변환 완료. 총 {len(pages)} 페이지.")
 
-    # Define the output text file path
-    output_text_file = os.path.join(output_folder, f"{os.path.basename(pdf_path)}.txt")
-    
-    with open(output_text_file, 'w', encoding='utf-8') as text_file:
-        # Use ThreadPoolExecutor to process pages in parallel
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            futures = [executor.submit(process_page, page, page_number)
-                       for page_number, page in enumerate(pages, start=1)]
-            results = sorted([future.result() for future in as_completed(futures)], key=lambda x: x[0])
+        output_text_file = os.path.join(output_folder, f"{os.path.basename(pdf_path)}.txt")
         
-        # Write results to file in the correct order
-        for page_number, text in results:
-            text_file.write(f"\n--- Page {page_number} ---\n")
-            text_file.write(text)
-            text_file.write("\n\n")
+        with open(output_text_file, 'w', encoding='utf-8') as text_file:
+            with ThreadPoolExecutor(max_workers=os.cpu_count() or 1) as executor: # CPU 코어 수만큼 워커 사용
+                app_logger.debug(f"ThreadPoolExecutor 생성 (max_workers={executor._max_workers}). 페이지 처리 시작.")
+                futures = [executor.submit(process_page, page, page_number)
+                           for page_number, page in enumerate(pages, start=1)]
+                results = sorted([future.result() for future in as_completed(futures)], key=lambda x: x[0])
+            
+            app_logger.info("모든 페이지 처리 완료. 파일에 결과 작성 중...")
+            for page_number, text in results:
+                text_file.write(f"\n--- Page {page_number} ---\n")
+                text_file.write(text)
+                text_file.write("\n\n")
+        app_logger.info(f"PDF 처리 완료. 결과 저장: {output_text_file}")
+    except Exception as e:
+        app_logger.error(f"PDF 처리 중 오류 ({pdf_path}): {e}", exc_info=True)
+        # GUI에서 이 오류를 잡아서 사용자에게 알릴 수 있도록 raise
+        raise
 
 def process_images_in_folder(input_folder, output_folder):
     """
@@ -109,16 +129,23 @@ def process_images_in_folder(input_folder, output_folder):
         input_folder (str): The folder containing image files.
         output_folder (str): The folder where the output text files will be saved.
     """
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+    app_logger.info(f"폴더 내 이미지 일괄 처리 시작: {input_folder}")
+    try:
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+            app_logger.info(f"출력 폴더 생성됨: {output_folder}")
 
-    supported_image_extensions = ('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.gif')
-
-    for file_name in os.listdir(input_folder):
-        if file_name.lower().endswith(supported_image_extensions):
-            image_path = os.path.join(input_folder, file_name)
-            print(f"Processing image {image_path}...")
-            process_single_image_file(image_path, output_folder) # 각 이미지 파일 처리
+        supported_image_extensions = ('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.gif')
+        image_files_processed = 0
+        for file_name in os.listdir(input_folder):
+            if file_name.lower().endswith(supported_image_extensions):
+                image_path = os.path.join(input_folder, file_name)
+                process_single_image_file(image_path, output_folder)
+                image_files_processed += 1
+        app_logger.info(f"폴더 내 이미지 일괄 처리 완료. 총 {image_files_processed}개 파일 처리됨: {input_folder}")
+    except Exception as e:
+        app_logger.error(f"폴더 내 이미지 일괄 처리 중 오류 ({input_folder}): {e}", exc_info=True)
+        raise
 
 def process_single_image_file(image_path, output_folder):
     """
@@ -128,32 +155,39 @@ def process_single_image_file(image_path, output_folder):
         image_path (str): The path to the image file.
         output_folder (str): The folder where the output text file will be saved.
     """
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
-
+    app_logger.info(f"단일 이미지 파일 처리 시작: {image_path}")
     try:
-        # PIL을 사용하여 이미지 열고 전처리 (선택 사항)
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+            app_logger.info(f"출력 폴더 생성됨: {output_folder}")
+
         img = Image.open(image_path)
-        # img = preprocess_image(img) # 필요시 전처리 활성화
+        app_logger.debug(f"이미지 로드 완료: {image_path}")
+
+        # 이미지 전처리 (그레이스케일 변환 등) - 필요시 활성화
+        # img = preprocess_image(img)
 
         buffer = io.BytesIO()
-        # 이미지 포맷을 유지하거나 PNG로 저장
         img_format = img.format if img.format in ["PNG", "JPEG", "BMP", "TIFF"] else "PNG"
         img.save(buffer, format=img_format)
         image_data = buffer.getvalue()
+        app_logger.debug(f"이미지를 바이트 데이터로 변환 완료 (포맷: {img_format}).")
 
         extracted_text = detect_text_from_image(image_data)
         
         base_name = os.path.basename(image_path)
         text_file_name = os.path.splitext(base_name)[0] + ".txt"
         output_text_file = os.path.join(output_folder, text_file_name)
-        
+
         with open(output_text_file, 'w', encoding='utf-8') as text_file:
             text_file.write(extracted_text)
-        print(f"Text extracted from {image_path} to {output_text_file}")
+        app_logger.info(f"텍스트 추출 완료 및 저장: {output_text_file}")
+    except FileNotFoundError:
+        app_logger.error(f"이미지 파일을 찾을 수 없음: {image_path}")
+        raise
     except Exception as e:
-        print(f"Error processing image {image_path}: {e}")
-        raise # 에러를 다시 발생시켜 GUI에서 처리할 수 있도록 함
+        app_logger.error(f"단일 이미지 파일 처리 중 오류 ({image_path}): {e}", exc_info=True)
+        raise
 
 if __name__ == "__main__":
     input_folder = r"" #add the path of the folder that contains the pdf 

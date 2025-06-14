@@ -2,15 +2,19 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 from logger import app_logger # 로거 임포트
 import threading
+import sys # sys 모듈 임포트
+
+
 import os
 
 # ocr_service 모듈이 같은 디렉토리에 있다고 가정합니다.
 # 그렇지 않은 경우, sys.path를 수정하거나 ocr_service.py의 경로를 정확히 명시해야 합니다.
 try:
     from ocr_service import process_images_in_folder, process_pdf, process_single_image_file, os as ocr_os
-except ImportError:
+except ImportError as e:
     err_msg = "ocr_service.py를 찾을 수 없습니다. 같은 디렉토리에 있는지 확인하세요."
-    app_logger.error(err_msg)
+    app_logger.error(f"{err_msg} - 상세 오류: {e}", exc_info=True) # 상세 오류 로깅
+    print(f"ImportError: {e}") # 콘솔에도 상세 오류 출력
     messagebox.showerror("오류", err_msg)
     exit()
 

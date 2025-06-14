@@ -219,7 +219,7 @@ class EpubProcessor:
                     epub_image = epub.EpubImage()
                     epub_image.file_name = f'images/{img_filename_epub}' # EPUB 내 이미지 폴더 경로
                     epub_image.media_type = Image.MIME[img_pil.format]
-                    with open(item_data['path'], 'rb') as f_img:
+                    with open(item_data.path, 'rb') as f_img: # DTO 객체 속성 접근 방식으로 변경
                         epub_image.content = f_img.read()
                     book.add_item(epub_image)
                     app_logger.debug(f"이미지 아이템 추가: {epub_image.file_name}")
@@ -236,6 +236,7 @@ class EpubProcessor:
                     spine.append(epub_img_chapter) # 읽기 순서용
                     app_logger.debug(f"이미지 챕터 추가: {image_chapter_title} ({image_xhtml_filename})")
                 except Exception as e_img:
+                    # img_pil.close() # PIL Image 객체를 사용했다면 닫아주는 것이 좋습니다. (여기서는 with open으로 파일 핸들만 관리)
                     app_logger.error(f"이미지 처리 중 오류 ({item_data.path}): {e_img}", exc_info=True)
 
         book.toc = chapters # 목차 설정

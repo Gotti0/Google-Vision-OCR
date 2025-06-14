@@ -182,12 +182,26 @@ class EpubCreatorAppPyQt(QMainWindow):
         if file_path:
             self.input_path_edit.setText(file_path)
             app_logger.info(f"EPUB 생성용 PDF 파일 선택됨: {file_path}")
+            # EPUB 출력 경로 기본값 설정
+            dir_name = os.path.dirname(file_path)
+            base_name_without_ext = os.path.splitext(os.path.basename(file_path))[0]
+            default_output_name = f"{base_name_without_ext}_ocr.epub"
+            default_output_path = os.path.join(dir_name, default_output_name)
+            self.output_epub_path_edit.setText(default_output_path)
+            app_logger.info(f"EPUB 출력 경로 기본값 설정됨: {default_output_path}")
 
     def select_input_image_folder_pyqt(self):
         folder_path = QFileDialog.getExistingDirectory(self, "이미지 파일들이 있는 폴더 선택")
         if folder_path:
             self.input_path_edit.setText(folder_path)
             app_logger.info(f"입력 이미지 폴더 선택됨: {folder_path}")
+            # EPUB 출력 경로 기본값 설정 (폴더의 부모 디렉토리에 폴더명_ocr.epub)
+            parent_dir = os.path.dirname(folder_path)
+            folder_name = os.path.basename(folder_path)
+            default_output_name = f"{folder_name}_ocr.epub"
+            default_output_path = os.path.join(parent_dir, default_output_name) # 폴더와 같은 레벨에 생성
+            self.output_epub_path_edit.setText(default_output_path)
+            app_logger.info(f"EPUB 출력 경로 기본값 설정됨 (폴더 모드): {default_output_path}")
 
     def select_output_epub_file_pyqt(self):
         file_path, _ = QFileDialog.getSaveFileName(self, "EPUB 파일로 저장", "", "EPUB Files (*.epub);;All Files (*)")

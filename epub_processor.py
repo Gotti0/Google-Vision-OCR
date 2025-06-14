@@ -85,7 +85,7 @@ class EpubProcessor:
         book = epub.EpubBook()
         book.set_identifier('id123456') # 고유 ID 설정 필요
         book.set_title(title)
-        book.set_language('ko') # 한국어 설정 예시
+        book.set_language('jp') # 일본어로 설정 (예시)
         book.add_author(author)
 
         extracted_data = self._extract_and_ocr_pages()

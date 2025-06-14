@@ -8,6 +8,7 @@ from pdf2image import convert_from_path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from logger import app_logger # 로거 임포트
 from config_manager import config_manager # ConfigManager 임포트
+from dtos import OcrInputItem # OcrInputItem DTO 임포트
 
 # The environment variable for Google Vision API credentials
 # will be set by the GUI (ocr_gui.py) or should be set in the system environment.
@@ -196,8 +197,8 @@ def ocr_pil_images_batch(pil_images_with_identifiers):
     ThreadPoolExecutor를 사용하여 병렬 처리합니다.
 
     Args:
-        pil_images_with_identifiers (list): 각 요소가 {'id': 식별자, 'image': PIL.Image.Image} 형태인 딕셔너리 리스트.
-                                            식별자는 페이지 번호, 파일 경로 등이 될 수 있습니다.
+        pil_images_with_identifiers (List[OcrInputItem]): OCR을 수행할 OcrInputItem 객체 리스트.
+                                                          id는 페이지 번호, 파일 경로 등이 될 수 있습니다.
 
     Returns:
         list: 각 요소가 {'id': 식별자, 'text': 추출된 텍스트} 형태인 딕셔너리 리스트.
@@ -211,7 +212,7 @@ def ocr_pil_images_batch(pil_images_with_identifiers):
     # 현재 process_page는 (page_number, text)를 반환하므로, id를 page_number로 사용합니다.
     
     with ThreadPoolExecutor(max_workers=os.cpu_count() or 1) as executor:
-        future_to_id = {executor.submit(process_page, item['image'], item['id']): item['id'] for item in pil_images_with_identifiers}
+        future_to_id = {executor.submit(process_page, item.image, item.id): item.id for item in pil_images_with_identifiers}
         for future in as_completed(future_to_id):
             identifier = future_to_id[future]
             try:

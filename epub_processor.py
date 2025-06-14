@@ -7,6 +7,7 @@ from pdf2image import convert_from_path
 from logger import app_logger
 from config_manager import config_manager # ConfigManager 임포트
 from ocr_service import ocr_pil_images_batch # 새로운 배치 OCR 함수 사용
+from dtos import PageDataSource, OcrInputItem, ProcessedPageItem # DTO 임포트
 
 class EpubProcessor:
     def __init__(self, input_source, output_epub_path, illustration_pages=None, illustration_images=None, is_image_folder=False, language=None):
@@ -31,81 +32,114 @@ class EpubProcessor:
         app_logger.info(f"일러스트 페이지 (PDF 내): {self.illustration_pages}")
         app_logger.info(f"일러스트 이미지 (외부 파일): {self.illustration_images}")
 
-    def _extract_and_ocr_pages(self):
+    def _load_pages_from_pdf(self):
         """
-        입력 소스(PDF 또는 이미지 리스트)에서 페이지를 처리.
-        PDF인 경우: 페이지를 추출하고, 일러스트가 아닌 페이지만 OCR 수행. 일러스트 페이지는 이미지로 저장.
-        이미지 리스트인 경우: 각 이미지를 그대로 사용 (OCR 없음).
+        PDF 파일에서 페이지들을 PIL 이미지 객체 리스트로 로드합니다.
         """
-        processed_content = [] # (타입, 데이터, 페이지번호) - 타입: 'text' 또는 'image'
-        source_pages_pil = [] # PIL Image 객체 리스트
+        app_logger.info(f"'{self.input_source}' (PDF)에서 페이지 추출 시작...")
+        pil_images = convert_from_path(self.input_source, output_folder=self.temp_dir, fmt='jpeg', paths_only=False)
+        return [PageDataSource(path=f"pdf_page_{i+1}", pil_image=pil_img, original_index=i) for i, pil_img in enumerate(pil_images)]
 
-        if not self.is_image_folder: # PDF 처리
-            app_logger.info(f"'{self.input_source}' (PDF)에서 페이지 추출 및 OCR 시작...")
-            source_pages_pil = convert_from_path(self.input_source, output_folder=self.temp_dir, fmt='jpeg', paths_only=False)
-        else: # 이미지 폴더(리스트) 처리
-            app_logger.info(f"이미지 리스트에서 페이지 처리 시작 (총 {len(self.input_source)}개)...")
-            # self.input_source는 이미지 파일 경로의 리스트여야 함
-            for img_path in self.input_source:
-                try:
-                    source_pages_pil.append(Image.open(img_path))
-                except Exception as e:
-                    app_logger.error(f"이미지 파일 로드 실패 '{img_path}': {e}")
-                    continue # 다음 이미지로
-        images_for_ocr = [] # OCR을 수행할 이미지와 해당 식별자(페이지 번호)를 저장
+    def _load_images_from_folder(self):
+        """
+        이미지 폴더(self.input_source가 경로 리스트일 경우)에서 이미지들을 로드합니다.
+        """
+        app_logger.info(f"이미지 리스트에서 페이지 처리 시작 (총 {len(self.input_source)}개)...")
+        loaded_images = []
+        for i, img_path in enumerate(self.input_source): # self.input_source는 이미지 파일 경로 리스트
+            try:
+                loaded_images.append(PageDataSource(path=img_path, pil_image=Image.open(img_path), original_index=i))
+            except Exception as e:
+                app_logger.error(f"이미지 파일 로드 실패 '{img_path}': {e}")
+        return loaded_images
 
-        for i, page_pil_data in enumerate(source_pages_pil):
-            page_number = i + 1 # 내부 처리용 순차 번호
-            page_pil = page_pil_data['pil']
-            original_file_path = page_pil_data.get('path', f"unknown_source_{page_number}")
+    def _determine_ocr_and_illust_items(self, source_page_data_list: list[PageDataSource]) -> tuple[list[OcrInputItem], list[ProcessedPageItem]]:
+        """
+        로드된 페이지/이미지 리스트를 기반으로 OCR 대상과 일러스트 아이템을 결정합니다.
+        결정된 아이템들은 임시 폴더에 이미지로 저장됩니다.
+        """
+        ocr_target_items = []
+        processed_items_list = [] # ProcessedPageItem 리스트
 
-            page_image_filename = f"page_{page_number}.jpg"
-            page_image_path = os.path.join(self.temp_dir, page_image_filename)
-            page_pil.save(page_image_path, "JPEG")
+        for i, page_data in enumerate(source_page_data_list):
+            page_number_for_processing = i + 1 # EPUB 내 순서 및 ID 생성을 위한 내부 번호
+            pil_image = page_data.pil_image
+            original_path = page_data.path
 
-            # PDF 모드에서는 illustration_pages 사용, 이미지 폴더 모드에서는 illustration_images 사용
+            # 임시 폴더에 이미지 저장 (모든 페이지/이미지에 대해)
+            temp_image_filename = f"page_{page_number_for_processing}.jpg"
+            temp_image_path = os.path.join(self.temp_dir, temp_image_filename)
+            pil_image.save(temp_image_path, "JPEG")
+
             is_designated_illust = False
-            if not self.is_image_folder and page_number in self.illustration_pages:
+            item_id_prefix = "page_" # 기본 ID 접두사
+            if not self.is_image_folder and page_number_for_processing in self.illustration_pages:
                 is_designated_illust = True
-            elif self.is_image_folder and original_file_path in self.illustration_images:
+                item_id_prefix = "img_pdf_"
+            elif self.is_image_folder and original_path in self.illustration_images:
                 is_designated_illust = True
+                item_id_prefix = "img_folder_designated_"
 
             if is_designated_illust:
-                app_logger.info(f"페이지 {page_number} ('{original_file_path}')는 일러스트로 처리. 이미지 저장: {page_image_path}")
-                item_id_prefix = "img_pdf_" if not self.is_image_folder else "img_folder_designated_"
-                processed_content.append({
-                    'type': 'image', 'path': page_image_path, 
-                    'id': f'{item_id_prefix}{page_number}', 
-                    'page_num': page_number, 'original_path': original_file_path
-                })
+                app_logger.info(f"아이템 {page_number_for_processing} ('{original_path}')는 일러스트로 처리.")
+                processed_items_list.append(ProcessedPageItem(
+                    type='image', path=temp_image_path,
+                    id=f'{item_id_prefix}{page_number_for_processing}',
+                    page_num=page_number_for_processing, original_path=original_path
+                ))
             else:
-                app_logger.info(f"페이지 {page_number} ('{original_file_path}') OCR 대상으로 추가.")
-                images_for_ocr.append({'id': page_number, 'image': page_pil, 'original_path': original_file_path})
+                app_logger.info(f"아이템 {page_number_for_processing} ('{original_path}') OCR 대상으로 추가.")
+                ocr_target_items.append(OcrInputItem(id=page_number_for_processing, image=pil_image, original_path=original_path))
+        
+        return ocr_target_items, processed_items_list
 
-        if images_for_ocr:
-            ocr_results = ocr_pil_images_batch(images_for_ocr)
+    def _extract_and_ocr_pages(self) -> list[ProcessedPageItem]:
+        """
+        입력 소스에서 페이지를 로드하고, OCR을 수행하며, 최종 컨텐츠 리스트를 준비합니다.
+        """
+        if not self.is_image_folder:
+            source_page_data_list = self._load_pages_from_pdf()
+        else:
+            source_page_data_list = self._load_images_from_folder()
+
+        ocr_input_items, processed_page_items = self._determine_ocr_and_illust_items(source_page_data_list)
+
+        if ocr_input_items:
+            ocr_results = ocr_pil_images_batch(ocr_input_items) # [{'id': 식별자, 'text': 추출된 텍스트}] 반환
             for result in ocr_results:
-                # images_for_ocr에서 original_path를 찾아 매핑
-                original_path_for_text = next((item['original_path'] for item in images_for_ocr if item['id'] == result['id']), "Unknown")
-                processed_content.append({'type': 'text', 'content': result['text'], 'page_num': result['id'], 'original_path': original_path_for_text})
+                # ocr_input_items에서 original_path를 찾아 매핑
+                ocr_item_origin = next((item for item in ocr_input_items if item.id == result['id']), None)
+                original_path_for_text = ocr_item_origin.original_path if ocr_item_origin else "Unknown"
+                
+                processed_page_items.append(ProcessedPageItem(
+                    type='text', content=result['text'],
+                    page_num=result['id'], id=f'page_{result["id"]}', # 텍스트 페이지 ID 규칙
+                    original_path=original_path_for_text
+                ))
 
         # 외부 일러스트 이미지 추가
         for idx, img_path in enumerate(self.illustration_images):
             if os.path.exists(img_path):
-                base_name = os.path.basename(img_path)
-                dest_path = os.path.join(self.temp_dir, base_name)
-                shutil.copy(img_path, dest_path)
-                app_logger.info(f"외부 일러스트 이미지 추가: {img_path} -> {dest_path}")
-                # 외부 이미지는 PDF 페이지 번호와 직접적인 연관이 없으므로, PDF 페이지 이후에 순차적으로 배치하거나
-                # 별도의 삽입 로직이 필요할 수 있습니다. 여기서는 PDF 페이지 이후 순서로 가정합니다.
-                # 페이지 번호는 PDF 페이지 수 이후로 할당하거나, None으로 두고 순서대로 처리합니다.
-                processed_content.append({'type': 'image', 'path': dest_path, 'id': f'img_ext_{idx}', 'page_num': len(source_pages_pil) + idx + 1})
+                # 이미지 폴더 모드에서 이미 폴더 내 일러스트로 지정된 경우 중복 방지
+                if self.is_image_folder and img_path in [item.original_path for item in processed_page_items if item.type == 'image']:
+                    app_logger.info(f"외부 일러스트 '{img_path}'는 이미 폴더 내 지정 일러스트로 처리됨. 중복 추가 안함.")
+                    continue
+                
+                temp_ext_img_name = f"ext_illust_{idx}{os.path.splitext(img_path)[1]}"
+                temp_ext_img_path = os.path.join(self.temp_dir, temp_ext_img_name)
+                shutil.copy(img_path, temp_ext_img_path)
+                app_logger.info(f"외부 일러스트 이미지 추가: {img_path} -> {temp_ext_img_path}")
+                processed_page_items.append(ProcessedPageItem(
+                    type='image', path=temp_ext_img_path,
+                    id=f'img_ext_{idx}', page_num=len(source_page_data_list) + idx + 1, # 페이지 번호는 기존 페이지 수 이후로
+                    original_path=img_path
+                ))
             else:
                 app_logger.warning(f"외부 일러스트 이미지 파일을 찾을 수 없음: {img_path}")
 
         # 페이지 번호 기준으로 정렬
-        processed_content.sort(key=lambda x: x['page_num'])
-        return processed_content
+        processed_page_items.sort(key=lambda item: item.page_num)
+        return processed_page_items
 
     def create_epub(self, title="Sample Ebook", author="Unknown Author"):
         """
@@ -124,13 +158,14 @@ class EpubProcessor:
         spine = ['nav'] # 목차(nav)를 가장 먼저 추가
 
         for i, item_data in enumerate(extracted_data):
-            item_id = item_data.get('id', f"item_{i}")
-            page_num_for_title = item_data.get('page_num', i + 1)
+            # item_data는 이제 ProcessedPageItem 객체
+            item_id = item_data.id
+            page_num_for_title = item_data.page_num
 
-            if item_data['type'] == 'text':
+            if item_data.type == 'text':
                 chapter_title = f'Page {page_num_for_title}'
                 # HTML 형식으로 변환 (간단한 예시)
-                html_content = f"<h1>{chapter_title}</h1><pre>{item_data['content']}</pre>"
+                html_content = f"<h1>{chapter_title}</h1><pre>{item_data.content}</pre>"
                 
                 # EpubHtml 객체 생성
                 # 파일명은 고유해야 하므로 item_id 사용
@@ -140,13 +175,12 @@ class EpubProcessor:
                 chapters.append(epub_chapter)
                 spine.append(epub_chapter)
                 app_logger.debug(f"텍스트 챕터 추가: {chapter_title} ({item_id}.xhtml)")
-
-            elif item_data['type'] == 'image':
+            elif item_data.type == 'image' and item_data.path: # 이미지 타입이고 경로가 있을 때
                 try:
-                    img_pil = Image.open(item_data['path'])
+                    img_pil = Image.open(item_data.path)
                     # EPUB에 이미지 추가 시 파일명(href)은 EPUB 내부 경로가 됨
                     # item_id를 파일명으로 사용하고, 실제 파일 확장자를 유지
-                    img_filename_epub = f"{item_id}{os.path.splitext(item_data['path'])[1]}"
+                    img_filename_epub = f"{item_id}{os.path.splitext(item_data.path)[1]}"
                     
                     epub_image = epub.EpubImage()
                     epub_image.file_name = f'images/{img_filename_epub}' # EPUB 내 이미지 폴더 경로
@@ -168,7 +202,7 @@ class EpubProcessor:
                     spine.append(epub_img_chapter) # 읽기 순서용
                     app_logger.debug(f"이미지 챕터 추가: {image_chapter_title} ({image_xhtml_filename})")
                 except Exception as e_img:
-                    app_logger.error(f"이미지 처리 중 오류 ({item_data['path']}): {e_img}", exc_info=True)
+                    app_logger.error(f"이미지 처리 중 오류 ({item_data.path}): {e_img}", exc_info=True)
 
         book.toc = chapters # 목차 설정
         book.spine = spine # 읽기 순서 설정

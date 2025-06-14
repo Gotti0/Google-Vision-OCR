@@ -1,5 +1,6 @@
 import os
 import shutil
+import time
 import tempfile
 from ebooklib import epub
 from PIL import Image
@@ -196,6 +197,7 @@ class EpubProcessor:
             item_id = item_data.id
             page_num_for_title = item_data.page_num
 
+            img_pil = None # Initialize img_pil to ensure it's defined for finally
             if item_data.type == 'text':
                 chapter_title = f'Page {page_num_for_title}'
                 # HTML 형식으로 변환 (간단한 예시)
@@ -211,33 +213,38 @@ class EpubProcessor:
                 app_logger.debug(f"텍스트 챕터 추가: {chapter_title} ({item_id}.xhtml)")
             elif item_data.type == 'image' and item_data.path: # 이미지 타입이고 경로가 있을 때
                 try:
-                    img_pil = Image.open(item_data.path)
-                    # EPUB에 이미지 추가 시 파일명(href)은 EPUB 내부 경로가 됨
-                    # item_id를 파일명으로 사용하고, 실제 파일 확장자를 유지
-                    img_filename_epub = f"{item_id}{os.path.splitext(item_data.path)[1]}"
-                    
-                    epub_image = epub.EpubImage()
-                    epub_image.file_name = f'images/{img_filename_epub}' # EPUB 내 이미지 폴더 경로
-                    epub_image.media_type = Image.MIME[img_pil.format]
-                    with open(item_data.path, 'rb') as f_img: # DTO 객체 속성 접근 방식으로 변경
-                        epub_image.content = f_img.read()
-                    book.add_item(epub_image)
-                    app_logger.debug(f"이미지 아이템 추가: {epub_image.file_name}")
+                    if os.path.exists(item_data.path):
+                        img_pil = Image.open(item_data.path)
+                        # EPUB에 이미지 추가 시 파일명(href)은 EPUB 내부 경로가 됨
+                        # item_id를 파일명으로 사용하고, 실제 파일 확장자를 유지
+                        img_filename_epub = f"{item_id}{os.path.splitext(item_data.path)[1]}"
+                        
+                        epub_image = epub.EpubImage()
+                        epub_image.file_name = f'images/{img_filename_epub}' # EPUB 내 이미지 폴더 경로
+                        epub_image.media_type = Image.MIME[img_pil.format]
+                        with open(item_data.path, 'rb') as f_img: # DTO 객체 속성 접근 방식으로 변경
+                            epub_image.content = f_img.read()
+                        book.add_item(epub_image)
+                        app_logger.debug(f"이미지 아이템 추가: {epub_image.file_name}")
 
-                    # 이미지를 보여주는 XHTML 챕터 생성
-                    image_chapter_title = f'Illustration (Page {page_num_for_title})'
-                    # 파일명은 고유해야 하므로 item_id 사용 (텍스트 챕터와 구분)
-                    image_xhtml_filename = f'img_page_{item_id}.xhtml'
-                    epub_img_chapter = epub.EpubHtml(title=image_chapter_title, file_name=image_xhtml_filename, lang='ko')
-                    epub_img_chapter.content = f'<h1>{image_chapter_title}</h1><div><img src="images/{img_filename_epub}" alt="{image_chapter_title}" style="max-width:100%;"/></div>'
-                    epub_img_chapter.add_item(epub_image) # 이미지 아이템을 이 챕터에 연결
-                    book.add_item(epub_img_chapter)
-                    chapters.append(epub_img_chapter) # 목차용
-                    spine.append(epub_img_chapter) # 읽기 순서용
-                    app_logger.debug(f"이미지 챕터 추가: {image_chapter_title} ({image_xhtml_filename})")
+                        # 이미지를 보여주는 XHTML 챕터 생성
+                        image_chapter_title = f'Illustration (Page {page_num_for_title})'
+                        # 파일명은 고유해야 하므로 item_id 사용 (텍스트 챕터와 구분)
+                        image_xhtml_filename = f'img_page_{item_id}.xhtml'
+                        epub_img_chapter = epub.EpubHtml(title=image_chapter_title, file_name=image_xhtml_filename, lang='ko')
+                        epub_img_chapter.content = f'<h1>{image_chapter_title}</h1><div><img src="images/{img_filename_epub}" alt="{image_chapter_title}" style="max-width:100%;"/></div>'
+                        epub_img_chapter.add_item(epub_image) # 이미지 아이템을 이 챕터에 연결
+                        book.add_item(epub_img_chapter)
+                        chapters.append(epub_img_chapter) # 목차용
+                        spine.append(epub_img_chapter) # 읽기 순서용
+                        app_logger.debug(f"이미지 챕터 추가: {image_chapter_title} ({image_xhtml_filename})")
+                    else:
+                        app_logger.warning(f"이미지 파일 경로를 찾을 수 없습니다: {item_data.path}")
                 except Exception as e_img:
-                    # img_pil.close() # PIL Image 객체를 사용했다면 닫아주는 것이 좋습니다. (여기서는 with open으로 파일 핸들만 관리)
                     app_logger.error(f"이미지 처리 중 오류 ({item_data.path}): {e_img}", exc_info=True)
+                finally:
+                    if img_pil:
+                        img_pil.close() # Ensure PIL Image object is closed
 
         book.toc = chapters # 목차 설정
         book.spine = spine # 읽기 순서 설정
@@ -250,9 +257,25 @@ class EpubProcessor:
 
     def _cleanup(self):
         """임시 파일 및 폴더 정리"""
-        if self.temp_dir and os.path.exists(self.temp_dir):
-            shutil.rmtree(self.temp_dir)
-            app_logger.info(f"임시 폴더 삭제 완료: {self.temp_dir}")
+        if not (self.temp_dir and os.path.exists(self.temp_dir)):
+            return
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                shutil.rmtree(self.temp_dir)
+                app_logger.info(f"임시 폴더 삭제 완료: {self.temp_dir}")
+                return # 성공 시 함수 종료
+            except PermissionError as e:
+                app_logger.warning(f"임시 폴더 삭제 실패 (시도 {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(1)  # 1초 대기 후 재시도
+                else:
+                    app_logger.error(f"임시 폴더 삭제 최종 실패 후에도 폴더가 남아있을 수 있습니다: {self.temp_dir}. 오류: {e}")
+                    # 여기서 오류를 다시 발생시키거나, 사용자에게 알리는 등의 추가 조치를 취할 수 있습니다.
+            except Exception as e: # 다른 예외 처리 (예: FileNotFoundError 등)
+                app_logger.error(f"임시 폴더 삭제 중 예상치 못한 오류 발생: {e}", exc_info=True)
+                break # 예상치 못한 오류 시 재시도 중단
 
 if __name__ == '__main__':
     # 테스트용 예시 (실제 사용 시 GUI 등에서 경로를 받아와야 함)

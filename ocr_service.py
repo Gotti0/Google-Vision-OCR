@@ -7,6 +7,7 @@ from google.cloud import vision
 from pdf2image import convert_from_path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from logger import app_logger # 로거 임포트
+from config_manager import config_manager # ConfigManager 임포트
 
 # The environment variable for Google Vision API credentials
 # will be set by the GUI (ocr_gui.py) or should be set in the system environment.

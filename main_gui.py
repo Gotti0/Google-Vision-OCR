@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from logger import app_logger # 로거 임포트
+from config_manager import config_manager # ConfigManager 임포트
 import threading
 import sys # sys 모듈 임포트
 
@@ -72,8 +73,8 @@ class OCRApp:
         self.credentials_path_var = tk.StringVar()
 
         # EPUB 관련 변수
-        self.epub_title_var = tk.StringVar(value="제목 없음")
-        self.epub_author_var = tk.StringVar(value="저자 미상")
+        self.epub_title_var = tk.StringVar(value=config_manager.get("default_epub_title"))
+        self.epub_author_var = tk.StringVar(value=config_manager.get("default_epub_author"))
         self.epub_illust_pages_pdf_var = tk.StringVar() # PDF 내 일러스트 페이지
         self.epub_illust_images_external_var = tk.StringVar() # 외부 일러스트 파일
 

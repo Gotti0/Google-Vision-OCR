@@ -5,10 +5,11 @@ from ebooklib import epub
 from PIL import Image
 from pdf2image import convert_from_path
 from logger import app_logger
+from config_manager import config_manager # ConfigManager 임포트
 from ocr_service import ocr_pil_images_batch # 새로운 배치 OCR 함수 사용
 
 class EpubProcessor:
-    def __init__(self, input_source, output_epub_path, illustration_pages=None, illustration_images=None, is_image_folder=False):
+    def __init__(self, input_source, output_epub_path, illustration_pages=None, illustration_images=None, is_image_folder=False, language=None):
         """
         EPUB 생성기 초기화
 
@@ -19,6 +20,7 @@ class EpubProcessor:
             illustration_images (list, optional): 별도 일러스트 이미지 파일 경로 목록. Defaults to None.
             is_image_folder (bool): input_source가 이미지 파일 리스트인지 여부. Defaults to False.
         """
+        self.language = language if language else config_manager.get("default_epub_language")
         self.input_source = input_source
         self.output_epub_path = output_epub_path
         self.illustration_pages = set(illustration_pages) if illustration_pages else set()
@@ -113,7 +115,7 @@ class EpubProcessor:
         book = epub.EpubBook()
         book.set_identifier('id123456') # 고유 ID 설정 필요
         book.set_title(title)
-        book.set_language('ko') # 기본 한국어 설정
+        book.set_language(self.language)
         book.add_author(author)
 
         extracted_data = self._extract_and_ocr_pages()

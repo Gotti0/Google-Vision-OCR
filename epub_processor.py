@@ -188,55 +188,74 @@ class EpubProcessor:
         book.add_author(author)
 
         extracted_data = self._extract_and_ocr_pages()
-        
-        chapters = []
-        spine = ['nav'] # 목차(nav)를 가장 먼저 추가
 
-        for i, item_data in enumerate(extracted_data):
-            # item_data는 이제 ProcessedPageItem 객체
-            item_id = item_data.id
-            page_num_for_title = item_data.page_num
+        new_chapters_for_toc = []
+        new_spine_order = ['nav'] # 목차(nav)를 가장 먼저 추가
 
-            img_pil = None # Initialize img_pil to ensure it's defined for finally
+        current_text_group_content_html = []
+        current_text_group_start_item = None
+
+        def add_merged_text_chapter_to_book(start_item, content_list):
+            if not start_item or not content_list:
+                return
+
+            merged_content_html = "".join(content_list)
+            # 병합된 챕터의 제목은 첫 페이지 기준.
+            merged_chapter_title = f'Page {start_item.page_num}'
+            # 병합된 챕터의 ID도 첫 페이지 기준
+            merged_item_id = start_item.id # 예: 'page_1'
+            
+            # 병합된 챕터의 전체 제목을 h1으로, 각 페이지 내용은 기존 포맷 유지
+            final_html_content = f"<h1>{merged_chapter_title}</h1>{merged_content_html}"
+            
+            epub_merged_chapter = epub.EpubHtml(title=merged_chapter_title, file_name=f'{merged_item_id}.xhtml', lang=self.language)
+            epub_merged_chapter.content = final_html_content
+            
+            book.add_item(epub_merged_chapter)
+            new_chapters_for_toc.append(epub_merged_chapter)
+            new_spine_order.append(epub_merged_chapter)
+            app_logger.info(f"병합된 텍스트 챕터 추가: {merged_chapter_title} ({merged_item_id}.xhtml), 원본 페이지 {len(content_list)}개 포함")
+
+        for item_data in extracted_data: # ProcessedPageItem 객체
             if item_data.type == 'text':
-                chapter_title = f'Page {page_num_for_title}'
-                # HTML 형식으로 변환 (간단한 예시)
-                html_content = f"<h1>{chapter_title}</h1><pre>{item_data.content}</pre>"
+                if not current_text_group_start_item:
+                    current_text_group_start_item = item_data
                 
-                # EpubHtml 객체 생성
-                # 파일명은 고유해야 하므로 item_id 사용
-                epub_chapter = epub.EpubHtml(title=chapter_title, file_name=f'{item_id}.xhtml', lang='ko')
-                epub_chapter.content = html_content
-                book.add_item(epub_chapter)
-                chapters.append(epub_chapter)
-                spine.append(epub_chapter)
-                app_logger.debug(f"텍스트 챕터 추가: {chapter_title} ({item_id}.xhtml)")
-            elif item_data.type == 'image' and item_data.path: # 이미지 타입이고 경로가 있을 때
+                # 각 원본 페이지의 부제목과 내용을 그룹에 추가
+                page_specific_title = f'Page {item_data.page_num}'
+                # 병합된 파일 내에서는 h2로 각 페이지 시작을 표시
+                html_for_this_page = f"<h2>{page_specific_title}</h2><pre>{item_data.content}</pre>\n"
+                current_text_group_content_html.append(html_for_this_page)
+            
+            elif item_data.type == 'image':
+                # 1. 현재까지 모인 텍스트 그룹이 있다면 병합해서 추가
+                add_merged_text_chapter_to_book(current_text_group_start_item, current_text_group_content_html)
+                current_text_group_content_html = []
+                current_text_group_start_item = None
+                
+                # 2. 이미지 아이템 추가
+                img_pil = None
                 try:
-                    if os.path.exists(item_data.path):
+                    if item_data.path and os.path.exists(item_data.path):
                         img_pil = Image.open(item_data.path)
-                        # EPUB에 이미지 추가 시 파일명(href)은 EPUB 내부 경로가 됨
-                        # item_id를 파일명으로 사용하고, 실제 파일 확장자를 유지
-                        img_filename_epub = f"{item_id}{os.path.splitext(item_data.path)[1]}"
+                        img_filename_epub = f"{item_data.id}{os.path.splitext(item_data.path)[1]}" # item_data.id 사용
                         
                         epub_image = epub.EpubImage()
                         epub_image.file_name = f'images/{img_filename_epub}' # EPUB 내 이미지 폴더 경로
                         epub_image.media_type = Image.MIME[img_pil.format]
-                        with open(item_data.path, 'rb') as f_img: # DTO 객체 속성 접근 방식으로 변경
+                        with open(item_data.path, 'rb') as f_img:
                             epub_image.content = f_img.read()
                         book.add_item(epub_image)
                         app_logger.debug(f"이미지 아이템 추가: {epub_image.file_name}")
 
-                        # 이미지를 보여주는 XHTML 챕터 생성
-                        image_chapter_title = f'Illustration (Page {page_num_for_title})'
-                        # 파일명은 고유해야 하므로 item_id 사용 (텍스트 챕터와 구분)
-                        image_xhtml_filename = f'img_page_{item_id}.xhtml'
-                        epub_img_chapter = epub.EpubHtml(title=image_chapter_title, file_name=image_xhtml_filename, lang='ko')
+                        image_chapter_title = f'Illustration (Page {item_data.page_num})'
+                        image_xhtml_filename = f'img_page_{item_data.id}.xhtml' # item_data.id 사용
+                        epub_img_chapter = epub.EpubHtml(title=image_chapter_title, file_name=image_xhtml_filename, lang=self.language)
                         epub_img_chapter.content = f'<h1>{image_chapter_title}</h1><div><img src="images/{img_filename_epub}" alt="{image_chapter_title}" style="max-width:100%;"/></div>'
-                        epub_img_chapter.add_item(epub_image) # 이미지 아이템을 이 챕터에 연결
+                        epub_img_chapter.add_item(epub_image)
                         book.add_item(epub_img_chapter)
-                        chapters.append(epub_img_chapter) # 목차용
-                        spine.append(epub_img_chapter) # 읽기 순서용
+                        new_chapters_for_toc.append(epub_img_chapter)
+                        new_spine_order.append(epub_img_chapter)
                         app_logger.debug(f"이미지 챕터 추가: {image_chapter_title} ({image_xhtml_filename})")
                     else:
                         app_logger.warning(f"이미지 파일 경로를 찾을 수 없습니다: {item_data.path}")
@@ -244,10 +263,13 @@ class EpubProcessor:
                     app_logger.error(f"이미지 처리 중 오류 ({item_data.path}): {e_img}", exc_info=True)
                 finally:
                     if img_pil:
-                        img_pil.close() # Ensure PIL Image object is closed
+                        img_pil.close()
 
-        book.toc = chapters # 목차 설정
-        book.spine = spine # 읽기 순서 설정
+        # 루프 종료 후, 마지막으로 남아있는 텍스트 그룹 처리
+        add_merged_text_chapter_to_book(current_text_group_start_item, current_text_group_content_html)
+
+        book.toc = new_chapters_for_toc # 목차 설정
+        book.spine = new_spine_order # 읽기 순서 설정
         book.add_item(epub.EpubNcx()) # NCX (목차) 파일 생성
         book.add_item(epub.EpubNav()) # Nav (탐색) 문서 생성
 

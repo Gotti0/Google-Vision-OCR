@@ -27,7 +27,7 @@ class EpubProcessor:
         self.input_source = input_source
         self.output_epub_path = output_epub_path
         self.illustration_pages = set(illustration_pages) if illustration_pages else set()
-        self.illustration_images = illustration_images if illustration_images else []
+        self.illustration_images = [os.path.normpath(p) for p in illustration_images] if illustration_images else []
         self.is_image_folder = is_image_folder
         try:
             self.temp_dir = tempfile.mkdtemp(prefix="epub_proc_")
@@ -58,7 +58,8 @@ class EpubProcessor:
         loaded_images = []
         for i, img_path in enumerate(self.input_source): # self.input_source는 이미지 파일 경로 리스트
             try:
-                loaded_images.append(PageDataSource(path=img_path, pil_image=Image.open(img_path), original_index=i))
+                normalized_path = os.path.normpath(img_path)
+                loaded_images.append(PageDataSource(path=normalized_path, pil_image=Image.open(normalized_path), original_index=i))
             except FileNotFoundError:
                 app_logger.error(f"이미지 파일 로드 실패 (파일 없음): '{img_path}'")
                 raise FileOperationError(f"이미지 파일 '{img_path}'를 찾을 수 없습니다.")
@@ -78,7 +79,7 @@ class EpubProcessor:
         for i, page_data in enumerate(source_page_data_list):
             page_number_for_processing = i + 1 # EPUB 내 순서 및 ID 생성을 위한 내부 번호
             pil_image = page_data.pil_image
-            original_path = page_data.path
+            original_path = page_data.path # 이미 _load_images_from_folder 또는 _load_pages_from_pdf 에서 정규화된 경로 또는 내부 식별자
 
             # 임시 폴더에 이미지 저장 (모든 페이지/이미지에 대해)
             temp_image_filename = f"page_{page_number_for_processing}.jpg"
@@ -151,8 +152,9 @@ class EpubProcessor:
         # 외부 일러스트 이미지 추가
         for idx, img_path in enumerate(self.illustration_images):
             if os.path.exists(img_path):
+                normalized_img_path = os.path.normpath(img_path_orig) # 이미 __init__에서 정규화되었지만, 일관성을 위해 다시 호출
                 # 이미지 폴더 모드에서 이미 폴더 내 일러스트로 지정된 경우 중복 방지
-                if self.is_image_folder and img_path in [item.original_path for item in processed_page_items if item.type == 'image']:
+                if self.is_image_folder and normalized_img_path in [item.original_path for item in processed_page_items if item.type == 'image']:
                     app_logger.info(f"외부 일러스트 '{img_path}'는 이미 폴더 내 지정 일러스트로 처리됨. 중복 추가 안함.")
                     continue
                 
@@ -160,17 +162,17 @@ class EpubProcessor:
                 temp_ext_img_path = os.path.join(self.temp_dir, temp_ext_img_name)
                 try:
                     shutil.copy(img_path, temp_ext_img_path)
-                    app_logger.info(f"외부 일러스트 이미지 추가: {img_path} -> {temp_ext_img_path}")
+                    app_logger.info(f"외부 일러스트 이미지 추가: {img_path_orig} -> {temp_ext_img_path}")
                     processed_page_items.append(ProcessedPageItem(
                         type='image', path=temp_ext_img_path,
                         id=f'img_ext_{idx}', page_num=len(source_page_data_list) + idx + 1, # 페이지 번호는 기존 페이지 수 이후로
-                        original_path=img_path
+                        original_path=normalized_img_path # 정규화된 경로 저장
                     ))
                 except Exception as e:
-                    app_logger.warning(f"외부 일러스트 파일 복사 실패 '{img_path}': {e}")
+                    app_logger.warning(f"외부 일러스트 파일 복사 실패 '{img_path_orig}': {e}")
                     # 오류를 발생시키지 않고 경고만 로깅 후 계속 진행할 수 있음
             else:
-                app_logger.warning(f"외부 일러스트 이미지 파일을 찾을 수 없음: {img_path}")
+                app_logger.warning(f"외부 일러스트 이미지 파일을 찾을 수 없음: {img_path_orig}")
 
         # 페이지 번호 기준으로 정렬
         processed_page_items.sort(key=lambda item: item.page_num)

@@ -133,7 +133,7 @@ class OCRApp:
         tk.Label(self.epub_options_frame, text="외부 일러스트 파일:").grid(row=3, column=0, padx=5, pady=5, sticky="w")
         self.external_illust_entry = tk.Entry(self.epub_options_frame, textvariable=self.epub_illust_images_external_var, width=22)
         self.external_illust_entry.grid(row=3, column=1, padx=5, pady=5, sticky="w")
-        ToolTip(self.external_illust_entry, "외부 일러스트 이미지 파일 경로를 쉼표로 구분하여 입력하거나 찾아보기 사용")
+        self.external_illust_tooltip = ToolTip(self.external_illust_entry, "외부 일러스트 이미지 파일 경로 (본문 처리 후 추가됨). 쉼표로 구분하거나 찾아보기 사용.") # 초기 툴팁
         tk.Button(self.epub_options_frame, text="파일 추가", command=self.select_external_illust_files).grid(row=3, column=1, padx=5, pady=5, sticky="e")
 
 
@@ -155,15 +155,19 @@ class OCRApp:
             self.input_path_label.config(text="입력 PDF 파일:")
             self.input_path_button.config(text="PDF 찾기", command=self.select_input_pdf_for_epub)
             # PDF 모드에서는 PDF 내 일러스트 페이지 입력 필드 활성화/표시
-            self.epub_options_frame.winfo_children()[4].config(state=tk.NORMAL) # Label
-            self.epub_options_frame.winfo_children()[5].config(state=tk.NORMAL) # Entry
+            self.epub_options_frame.grid_slaves(row=2, column=0)[0].config(state=tk.NORMAL) # Label for "일러스트 페이지 (PDF 내):"
+            self.epub_options_frame.grid_slaves(row=2, column=1)[0].config(state=tk.NORMAL) # Entry for "일러스트 페이지 (PDF 내):"
+            self.epub_options_frame.grid_slaves(row=3, column=0)[0].config(text="외부 일러스트 파일:") # "외부 일러스트 파일" 레이블 원복
+            self.external_illust_tooltip.text = "외부 일러스트 이미지 파일 경로 (본문 처리 후 추가됨). 쉼표로 구분하거나 찾아보기 사용."
         elif input_type == "image_folder":
             self.input_path_label.config(text="입력 이미지 폴더:")
             self.input_path_button.config(text="폴더 찾기", command=self.select_input_image_folder)
             # 이미지 폴더 모드에서는 PDF 내 일러스트 페이지 입력 필드 비활성화/숨김 (의미 없음)
-            self.epub_options_frame.winfo_children()[4].config(state=tk.DISABLED)
-            self.epub_options_frame.winfo_children()[5].config(state=tk.DISABLED)
+            self.epub_options_frame.grid_slaves(row=2, column=0)[0].config(state=tk.DISABLED)
+            self.epub_options_frame.grid_slaves(row=2, column=1)[0].config(state=tk.DISABLED)
             self.epub_illust_pages_pdf_var.set("") # 값 초기화
+            self.epub_options_frame.grid_slaves(row=3, column=0)[0].config(text="일러스트 지정(폴더내):") # "외부 일러스트 파일" 레이블 변경
+            self.external_illust_tooltip.text = "폴더 내 특정 이미지 파일을 일러스트로 지정 (OCR 제외). 쉼표로 구분하거나 찾아보기 사용."
         self.input_path_var.set("") # 입력 타입 변경 시 경로 초기화
     def select_output_epub_file(self):
         file_selected = filedialog.asksaveasfilename(

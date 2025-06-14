@@ -1,0 +1,6 @@
+.venv
+/pdfs
+/result
+/outputs
+/.vscode
+/.idea

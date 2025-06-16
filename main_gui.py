@@ -57,26 +57,39 @@ class EpubCreatorAppPyQt(QMainWindow):
         input_type_layout.addStretch()
         main_layout.addLayout(input_type_layout)
 
+        # 출력 포맷 선택
+        output_format_layout = QHBoxLayout()
+        output_format_label = QLabel("출력 포맷:")
+        self.rb_output_epub = QRadioButton("EPUB")
+        self.rb_output_epub.setChecked(True)
+        self.rb_output_txt = QRadioButton("TXT")
+        self.rb_output_epub.toggled.connect(self.update_output_widgets_pyqt)
+        # self.rb_output_txt.toggled.connect(self.update_output_widgets_pyqt) # EPUB 라디오 버튼 토글 시 같이 업데이트됨
+        output_format_layout.addWidget(output_format_label)
+        output_format_layout.addWidget(self.rb_output_epub)
+        output_format_layout.addWidget(self.rb_output_txt)
+        output_format_layout.addStretch()
+        main_layout.addLayout(output_format_layout)
+
         # 입력 경로
         self.input_path_label = QLabel("입력 PDF 파일:")
         self.input_path_edit = QLineEdit()
         self.input_path_edit.setToolTip("EPUB으로 변환할 PDF 파일 또는 이미지 폴더의 경로입니다.")
         self.input_path_edit.setPlaceholderText("EPUB으로 변환할 PDF 파일 또는 이미지 폴더 경로")
         self.input_path_button = QPushButton("PDF 찾기")
-        self.input_path_button.clicked.connect(self.select_input_source_pyqt)
+        self.input_path_button.clicked.connect(self.select_input_source_pyqt) # 연결은 유지, 내부 로직에서 포맷 고려
         self.input_path_button.setToolTip("입력 소스를 선택합니다.")
         input_path_layout = self.create_path_selection_layout(self.input_path_label, self.input_path_edit, self.input_path_button)
         main_layout.addLayout(input_path_layout)
 
-        # EPUB 출력 파일
-        output_path_label = QLabel("EPUB 출력 파일:")
-        self.output_epub_path_edit = QLineEdit()
-        self.output_epub_path_edit.setToolTip("생성될 EPUB 파일의 전체 경로입니다. (.epub)")
-        self.output_epub_path_edit.setPlaceholderText("생성될 EPUB 파일의 전체 경로 (.epub)")
-        output_path_button = QPushButton("저장 경로")
-        output_path_button.clicked.connect(self.select_output_epub_file_pyqt)
-        output_path_button.setToolTip("EPUB 저장 경로와 파일명을 선택합니다.")
-        output_path_layout = self.create_path_selection_layout(output_path_label, self.output_epub_path_edit, output_path_button)
+        # 출력 파일
+        self.output_path_label = QLabel("EPUB 출력 파일:") # 초기값, update_output_widgets_pyqt에서 변경됨
+        self.output_path_edit = QLineEdit()
+        # 툴팁과 플레이스홀더는 update_output_widgets_pyqt에서 설정
+        self.output_path_button = QPushButton("저장 경로")
+        self.output_path_button.clicked.connect(self.select_output_file_pyqt)
+        # 툴팁은 update_output_widgets_pyqt에서 설정
+        output_path_layout = self.create_path_selection_layout(self.output_path_label, self.output_path_edit, self.output_path_button)
         main_layout.addLayout(output_path_layout)
 
         # 서비스 계정 JSON
@@ -128,11 +141,11 @@ class EpubCreatorAppPyQt(QMainWindow):
         main_layout.addWidget(epub_options_frame)
 
         # 처리 시작 버튼
-        self.process_button = QPushButton("EPUB 생성 시작")
+        self.process_button = QPushButton("EPUB 생성 시작") # 초기값, update_output_widgets_pyqt에서 변경됨
         self.process_button.setObjectName("primaryButton") # QSS 적용용
         self.process_button.setFixedHeight(40)
-        self.process_button.setToolTip("입력된 정보를 바탕으로 EPUB 생성을 시작합니다.")
-        self.process_button.clicked.connect(self.start_processing_thread_pyqt)
+        # 툴팁은 update_output_widgets_pyqt에서 설정
+        self.process_button.clicked.connect(self.start_document_creation_thread_pyqt)
         main_layout.addWidget(self.process_button)
 
         # 상태 메시지 레이블
@@ -143,6 +156,7 @@ class EpubCreatorAppPyQt(QMainWindow):
         main_layout.addStretch() # 하단 여백
 
         self.update_input_widgets_pyqt() # 초기 UI 상태 설정
+        self.update_output_widgets_pyqt() # 초기 출력 UI 상태 설정
 
     def create_path_selection_layout(self, label_widget, line_edit_widget, button_widget):
         layout = QHBoxLayout()
@@ -151,6 +165,24 @@ class EpubCreatorAppPyQt(QMainWindow):
         layout.addWidget(line_edit_widget)
         layout.addWidget(button_widget)
         return layout
+
+    def update_output_widgets_pyqt(self):
+        if self.rb_output_epub.isChecked():
+            self.output_path_label.setText("EPUB 출력 파일:")
+            self.output_path_edit.setToolTip("생성될 EPUB 파일의 전체 경로입니다. (.epub)")
+            self.output_path_edit.setPlaceholderText("생성될 EPUB 파일의 전체 경로 (.epub)")
+            self.output_path_button.setToolTip("EPUB 저장 경로와 파일명을 선택합니다.")
+            self.process_button.setText("EPUB 생성 시작")
+            self.process_button.setToolTip("입력된 정보를 바탕으로 EPUB 생성을 시작합니다.")
+        else: # TXT 선택
+            self.output_path_label.setText("TXT 출력 파일:")
+            self.output_path_edit.setToolTip("생성될 TXT 파일의 전체 경로입니다. (.txt)")
+            self.output_path_edit.setPlaceholderText("생성될 TXT 파일의 전체 경로 (.txt)")
+            self.output_path_button.setToolTip("TXT 저장 경로와 파일명을 선택합니다.")
+            self.process_button.setText("TXT 생성 시작")
+            self.process_button.setToolTip("입력된 정보를 바탕으로 TXT 생성을 시작합니다.")
+        # 입력 소스 변경 시 기본 출력 경로도 업데이트되도록 update_input_widgets_pyqt 호출
+        self.update_default_output_path()
 
     def update_input_widgets_pyqt(self):
         if self.rb_pdf.isChecked():
@@ -170,6 +202,7 @@ class EpubCreatorAppPyQt(QMainWindow):
             self.external_illust_label.setText("일러스트 지정(폴더내):")
             self.epub_illust_images_external_edit.setToolTip("폴더 내 특정 이미지 파일을 일러스트로 지정 (OCR 제외). 쉼표로 구분하거나 찾아보기 사용.")
         self.input_path_edit.clear()
+        self.update_default_output_path() # 입력 타입 변경 시 출력 경로도 업데이트
 
     def select_input_source_pyqt(self):
         if self.rb_pdf.isChecked():
@@ -177,37 +210,52 @@ class EpubCreatorAppPyQt(QMainWindow):
         else:
             self.select_input_image_folder_pyqt()
 
+    def update_default_output_path(self):
+        input_path = self.input_path_edit.text()
+        if not input_path:
+            self.output_path_edit.clear()
+            return
+
+        ext = ".epub" if self.rb_output_epub.isChecked() else ".txt"
+        
+        if os.path.isfile(input_path): # PDF 파일의 경우
+            dir_name = os.path.dirname(input_path)
+            base_name_without_ext = os.path.splitext(os.path.basename(input_path))[0]
+            default_output_name = f"{base_name_without_ext}_ocr{ext}"
+            default_output_path = os.path.join(dir_name, default_output_name)
+        elif os.path.isdir(input_path): # 이미지 폴더의 경우
+            parent_dir = os.path.dirname(input_path)
+            folder_name = os.path.basename(input_path)
+            default_output_name = f"{folder_name}_ocr{ext}"
+            default_output_path = os.path.normpath(os.path.join(parent_dir, default_output_name))
+        else: # 경로가 유효하지 않거나 아직 선택되지 않음
+            self.output_path_edit.clear()
+            return
+            
+        self.output_path_edit.setText(default_output_path)
+        app_logger.info(f"출력 경로 기본값 설정됨 ({ext}): {default_output_path}")
+
     def select_input_pdf_for_epub_pyqt(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "EPUB으로 만들 PDF 파일 선택", "", "PDF Files (*.pdf);;All Files (*)")
         if file_path:
             self.input_path_edit.setText(file_path)
-            app_logger.info(f"EPUB 생성용 PDF 파일 선택됨: {file_path}")
-            # EPUB 출력 경로 기본값 설정
-            dir_name = os.path.dirname(file_path)
-            base_name_without_ext = os.path.splitext(os.path.basename(file_path))[0]
-            default_output_name = f"{base_name_without_ext}_ocr.epub"
-            default_output_path = os.path.join(dir_name, default_output_name)
-            self.output_epub_path_edit.setText(default_output_path)
-            app_logger.info(f"EPUB 출력 경로 기본값 설정됨: {default_output_path}")
+            app_logger.info(f"입력 PDF 파일 선택됨: {file_path}")
+            self.update_default_output_path()
 
     def select_input_image_folder_pyqt(self):
         folder_path = QFileDialog.getExistingDirectory(self, "이미지 파일들이 있는 폴더 선택")
         if folder_path:
             self.input_path_edit.setText(folder_path)
             app_logger.info(f"입력 이미지 폴더 선택됨: {folder_path}")
-            # EPUB 출력 경로 기본값 설정 (폴더의 부모 디렉토리에 폴더명_ocr.epub)
-            parent_dir = os.path.dirname(folder_path)
-            folder_name = os.path.basename(folder_path)
-            default_output_name = f"{folder_name}_ocr.epub"
-            default_output_path = os.path.normpath(os.path.join(parent_dir, default_output_name)) # 폴더와 같은 레벨에 생성하고 정규화
-            self.output_epub_path_edit.setText(default_output_path)
-            app_logger.info(f"EPUB 출력 경로 기본값 설정됨 (폴더 모드): {default_output_path}")
+            self.update_default_output_path()
 
-    def select_output_epub_file_pyqt(self):
-        file_path, _ = QFileDialog.getSaveFileName(self, "EPUB 파일로 저장", "", "EPUB Files (*.epub);;All Files (*)")
+    def select_output_file_pyqt(self):
+        default_filter = "EPUB Files (*.epub)" if self.rb_output_epub.isChecked() else "Text Files (*.txt)"
+        dialog_title = "EPUB 파일로 저장" if self.rb_output_epub.isChecked() else "TXT 파일로 저장"
+        file_path, _ = QFileDialog.getSaveFileName(self, dialog_title, "", f"{default_filter};;All Files (*)")
         if file_path:
-            self.output_epub_path_edit.setText(file_path)
-            app_logger.info(f"EPUB 출력 파일 선택됨: {file_path}")
+            self.output_path_edit.setText(file_path)
+            app_logger.info(f"출력 파일 선택됨: {file_path}")
 
     def select_credentials_file_pyqt(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "서비스 계정 JSON 파일 선택", "", "JSON Files (*.json);;All Files (*)")
@@ -224,10 +272,11 @@ class EpubCreatorAppPyQt(QMainWindow):
             self.epub_illust_images_external_edit.setText(",".join(new_paths))
             app_logger.info(f"외부 일러스트 파일 추가됨: {files}")
 
-    def start_processing_thread_pyqt(self):
+    def start_document_creation_thread_pyqt(self):
         input_path = self.input_path_edit.text()
-        output_path = self.output_epub_path_edit.text()
+        output_path = self.output_path_edit.text()
         credentials_file = self.credentials_edit.text()
+        output_format = "epub" if self.rb_output_epub.isChecked() else "txt"
         is_image_folder_mode = self.rb_image_folder.isChecked()
 
         # 유효성 검사 (tkinter 버전과 유사하게)
@@ -235,10 +284,13 @@ class EpubCreatorAppPyQt(QMainWindow):
             QMessageBox.warning(self, "입력 오류", "입력 PDF 파일 또는 이미지 폴더를 선택해주세요.")
             return
         # ... (다른 유효성 검사 추가) ...
+        if not output_path:
+            QMessageBox.warning(self, "입력 오류", "출력 파일 경로를 지정해주세요.")
+            return
 
         self.process_button.setEnabled(False)
         self.status_label.setText("처리 중...")
-        app_logger.info("EPUB 생성 스레드 시작 중...")
+        app_logger.info(f"{output_format.upper()} 생성 스레드 시작 중...")
 
         # 스레드에서 실행될 작업 준비
         self.worker_signals = WorkerSignals()
@@ -249,12 +301,12 @@ class EpubCreatorAppPyQt(QMainWindow):
 
         # 스레드 생성 및 시작
         # (기존 start_processing_thread의 로직을 별도 함수로 분리하여 스레드에서 실행)
-        thread = threading.Thread(target=self.run_epub_creation_task, 
-                                  args=(input_path, output_path, credentials_file, is_image_folder_mode, self.worker_signals))
+        thread = threading.Thread(target=self.run_document_creation_task,
+                                  args=(input_path, output_path, credentials_file, is_image_folder_mode, output_format, self.worker_signals))
         thread.daemon = True
         thread.start()
 
-    def run_epub_creation_task(self, input_path, output_path, credentials_file, is_image_folder_mode, signals):
+    def run_document_creation_task(self, input_path, output_path, credentials_file, is_image_folder_mode, output_format, signals):
         try:
             epub_title = self.epub_title_edit.text()
             epub_author = self.epub_author_edit.text()
@@ -284,30 +336,31 @@ class EpubCreatorAppPyQt(QMainWindow):
                     signals.error.emit("폴더 읽기 오류", f"이미지 폴더를 읽는 중 오류 발생: {e_dir}")
                     return
             
-            success = self.app_service.create_epub_from_source(
+            success = self.app_service.create_document_from_source(
                 input_source=final_input_source,
-                output_epub_path=output_path,
+                output_path=output_path,
                 title=epub_title, author=epub_author,
                 illustration_pages_pdf=illust_pages_pdf,
                 illustration_images_ext=illust_images_ext,
                 is_image_folder_mode=is_image_folder_mode,
-                credentials_path=credentials_file
+                credentials_path=credentials_file,
+                output_format=output_format
             )
             if success:
-                signals.success.emit("완료", f"EPUB 파일 '{os.path.basename(output_path)}' 생성이 완료되었습니다.")
+                signals.success.emit("완료", f"{output_format.upper()} 파일 '{os.path.basename(output_path)}' 생성이 완료되었습니다.")
         except (ConfigError, FileOperationError, OCRError, EpubProcessingError) as app_exc:
             signals.error.emit("처리 오류", app_exc.message)
         except ApplicationBaseException as base_exc:
             signals.error.emit("애플리케이션 오류", base_exc.message)
         except Exception as e:
-            signals.error.emit("알 수 없는 오류", f"EPUB 생성 중 알 수 없는 오류가 발생했습니다: {e}")
+            signals.error.emit("알 수 없는 오류", f"{output_format.upper()} 생성 중 알 수 없는 오류가 발생했습니다: {e}")
         finally:
             signals.finished.emit()
 
     def on_processing_finished(self):
         self.process_button.setEnabled(True)
         # self.status_label.setText("준비 완료. 다른 파일을 처리할 수 있습니다.") # success/error 시그널에서 처리
-        app_logger.info("EPUB 생성 스레드 종료.")
+        app_logger.info("문서 생성 스레드 종료.")
 
     def on_processing_error(self, title, message):
         self.status_label.setText(f"오류: {message}")
@@ -315,7 +368,7 @@ class EpubCreatorAppPyQt(QMainWindow):
         app_logger.error(f"{title}: {message}")
 
     def on_processing_success(self, title, message):
-        self.status_label.setText("EPUB 파일 생성 완료!")
+        self.status_label.setText("파일 생성 완료!")
         QMessageBox.information(self, title, message)
         app_logger.info(message)
 

@@ -167,6 +167,20 @@ class EpubCreatorAppPyQt(QMainWindow):
         return layout
 
     def update_output_widgets_pyqt(self):
+        is_epub_selected = self.rb_output_epub.isChecked()
+
+        # EPUB 관련 옵션 위젯들의 활성화/비활성화 상태를 설정
+        self.epub_title_edit.setEnabled(is_epub_selected)
+        self.epub_author_edit.setEnabled(is_epub_selected)
+        # 일러스트 관련 위젯들은 입력 타입(PDF/이미지 폴더)에 따라 이미 update_input_widgets_pyqt에서
+        # show/hide 처리되므로, 여기서는 EPUB 선택 여부에 따라 추가로 제어할 수 있습니다.
+        # 예를 들어, PDF 모드일 때만 일러스트 페이지 입력이 의미 있으므로,
+        # is_epub_selected 와 self.rb_pdf.isChecked() 조건을 함께 고려할 수 있습니다.
+        # 여기서는 단순하게 EPUB 선택 시에만 관련 필드가 활성화되도록 합니다.
+        self.epub_illust_pages_pdf_edit.setEnabled(is_epub_selected and self.rb_pdf.isChecked()) # PDF 모드이고 EPUB 선택 시
+        self.epub_illust_images_external_edit.setEnabled(is_epub_selected)
+        # add_external_illust_button도 마찬가지로 제어할 수 있습니다. (현재 코드에서는 버튼 객체에 직접 접근 필요)
+
         if self.rb_output_epub.isChecked():
             self.output_path_label.setText("EPUB 출력 파일:")
             self.output_path_edit.setToolTip("생성될 EPUB 파일의 전체 경로입니다. (.epub)")
@@ -174,6 +188,7 @@ class EpubCreatorAppPyQt(QMainWindow):
             self.output_path_button.setToolTip("EPUB 저장 경로와 파일명을 선택합니다.")
             self.process_button.setText("EPUB 생성 시작")
             self.process_button.setToolTip("입력된 정보를 바탕으로 EPUB 생성을 시작합니다.")
+            self.epub_options_frame.setEnabled(True) # EPUB 옵션 프레임 전체 활성화
         else: # TXT 선택
             self.output_path_label.setText("TXT 출력 파일:")
             self.output_path_edit.setToolTip("생성될 TXT 파일의 전체 경로입니다. (.txt)")
@@ -181,6 +196,7 @@ class EpubCreatorAppPyQt(QMainWindow):
             self.output_path_button.setToolTip("TXT 저장 경로와 파일명을 선택합니다.")
             self.process_button.setText("TXT 생성 시작")
             self.process_button.setToolTip("입력된 정보를 바탕으로 TXT 생성을 시작합니다.")
+            self.epub_options_frame.setEnabled(False) # EPUB 옵션 프레임 전체 비활성화
         # 입력 소스 변경 시 기본 출력 경로도 업데이트되도록 update_input_widgets_pyqt 호출
         self.update_default_output_path()
 
@@ -190,6 +206,7 @@ class EpubCreatorAppPyQt(QMainWindow):
             self.input_path_button.setText("PDF 찾기")
             self.pdf_illust_label.show()
             self.epub_illust_pages_pdf_edit.show()
+            self.epub_illust_pages_pdf_edit.setEnabled(self.rb_output_epub.isChecked()) # EPUB 선택 시에만 활성화
             self.external_illust_label.setText("외부 일러스트 파일:")
             self.epub_illust_pages_pdf_edit.setToolTip("PDF 내 일러스트 페이지 번호를 쉼표로 구분하여 입력 (예: 1,5,10)")
             self.epub_illust_images_external_edit.setToolTip("외부 일러스트 이미지 파일 경로 (본문 처리 후 추가됨). 쉼표로 구분하거나 찾아보기 사용.")
@@ -199,9 +216,11 @@ class EpubCreatorAppPyQt(QMainWindow):
             self.pdf_illust_label.hide()
             self.epub_illust_pages_pdf_edit.hide()
             self.epub_illust_pages_pdf_edit.clear()
+            self.epub_illust_pages_pdf_edit.setEnabled(False) # 이미지 폴더 모드에서는 항상 비활성화
             self.external_illust_label.setText("일러스트 지정(폴더내):")
             self.epub_illust_images_external_edit.setToolTip("폴더 내 특정 이미지 파일을 일러스트로 지정 (OCR 제외). 쉼표로 구분하거나 찾아보기 사용.")
         self.input_path_edit.clear()
+        # self.epub_illust_images_external_edit.setEnabled(self.rb_output_epub.isChecked()) # 공통으로 EPUB 선택 시에만 활성화
         self.update_default_output_path() # 입력 타입 변경 시 출력 경로도 업데이트
 
     def select_input_source_pyqt(self):

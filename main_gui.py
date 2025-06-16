@@ -4,7 +4,7 @@ import threading
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QRadioButton, QFileDialog, QMessageBox,
-    QFrame, QGridLayout
+    QFrame, QGridLayout, QButtonGroup # QButtonGroup 임포트
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QObject
 from qt_material import apply_stylesheet # qt-material 임포트
@@ -51,6 +51,11 @@ class EpubCreatorAppPyQt(QMainWindow):
         self.rb_image_folder = QRadioButton("이미지 폴더")
         self.rb_pdf.toggled.connect(self.update_input_widgets_pyqt)
         self.rb_image_folder.toggled.connect(self.update_input_widgets_pyqt)
+        
+        # 입력 타입 라디오 버튼 그룹화
+        self.input_type_group = QButtonGroup(self)
+        self.input_type_group.addButton(self.rb_pdf)
+        self.input_type_group.addButton(self.rb_image_folder)
         input_type_layout.addWidget(input_type_label)
         input_type_layout.addWidget(self.rb_pdf)
         input_type_layout.addWidget(self.rb_image_folder)
@@ -64,6 +69,11 @@ class EpubCreatorAppPyQt(QMainWindow):
         self.rb_output_epub.setChecked(True)
         self.rb_output_txt = QRadioButton("TXT")
         self.rb_output_epub.toggled.connect(self.update_output_widgets_pyqt)
+        
+        # 출력 포맷 라디오 버튼 그룹화
+        self.output_format_group = QButtonGroup(self)
+        self.output_format_group.addButton(self.rb_output_epub)
+        self.output_format_group.addButton(self.rb_output_txt)
         # self.rb_output_txt.toggled.connect(self.update_output_widgets_pyqt) # EPUB 라디오 버튼 토글 시 같이 업데이트됨
         output_format_layout.addWidget(output_format_label)
         output_format_layout.addWidget(self.rb_output_epub)
@@ -118,9 +128,9 @@ class EpubCreatorAppPyQt(QMainWindow):
         # 툴팁은 update_input_widgets_pyqt에서 동적으로 설정됩니다.
         self.epub_illust_images_external_edit = QLineEdit()
         # 툴팁은 update_input_widgets_pyqt에서 동적으로 설정됩니다.
-        add_external_illust_button = QPushButton("파일 추가")
-        add_external_illust_button.clicked.connect(self.select_external_illust_files_pyqt)
-        add_external_illust_button.setToolTip("목록에 외부 일러스트 이미지 파일을 추가합니다.")
+        self.add_external_illust_button = QPushButton("파일 추가")
+        self.add_external_illust_button.clicked.connect(self.select_external_illust_files_pyqt)
+        self.add_external_illust_button.setToolTip("목록에 외부 일러스트 이미지 파일을 추가합니다.")
 
         epub_options_layout.addWidget(QLabel("EPUB 제목:"), 0, 0)
         epub_options_layout.addWidget(self.epub_title_edit, 0, 1)
@@ -135,7 +145,7 @@ class EpubCreatorAppPyQt(QMainWindow):
         epub_options_layout.addWidget(self.external_illust_label, 3, 0)
         external_illust_layout = QHBoxLayout()
         external_illust_layout.addWidget(self.epub_illust_images_external_edit)
-        external_illust_layout.addWidget(add_external_illust_button)
+        external_illust_layout.addWidget(self.add_external_illust_button)
         epub_options_layout.addLayout(external_illust_layout, 3, 1)
         
         main_layout.addWidget(self.epub_options_frame)
@@ -179,7 +189,7 @@ class EpubCreatorAppPyQt(QMainWindow):
         # 여기서는 단순하게 EPUB 선택 시에만 관련 필드가 활성화되도록 합니다.
         self.epub_illust_pages_pdf_edit.setEnabled(is_epub_selected and self.rb_pdf.isChecked()) # PDF 모드이고 EPUB 선택 시
         self.epub_illust_images_external_edit.setEnabled(is_epub_selected)
-        # add_external_illust_button도 마찬가지로 제어할 수 있습니다. (현재 코드에서는 버튼 객체에 직접 접근 필요)
+        self.add_external_illust_button.setEnabled(is_epub_selected)
 
         if self.rb_output_epub.isChecked():
             self.output_path_label.setText("EPUB 출력 파일:")

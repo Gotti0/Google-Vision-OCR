@@ -104,10 +104,10 @@ class EpubCreatorAppPyQt(QMainWindow):
         main_layout.addLayout(credentials_layout)
 
         # EPUB 옵션 프레임
-        epub_options_frame = QFrame()
-        epub_options_frame.setObjectName("epubOptionsFrame") # QSS 적용을 위해
+        self.epub_options_frame = QFrame() # self.epub_options_frame으로 할당
+        self.epub_options_frame.setObjectName("epubOptionsFrame") # QSS 적용을 위해
         # epub_options_frame.setFrameShape(QFrame.Shape.StyledPanel) # 테마에 따라 불필요할 수 있음
-        epub_options_layout = QGridLayout(epub_options_frame)
+        epub_options_layout = QGridLayout(self.epub_options_frame)
         
         self.epub_title_edit = QLineEdit(config_manager.get("default_epub_title"))
         self.epub_title_edit.setToolTip("생성될 EPUB 파일의 제목입니다.")
@@ -138,7 +138,7 @@ class EpubCreatorAppPyQt(QMainWindow):
         external_illust_layout.addWidget(add_external_illust_button)
         epub_options_layout.addLayout(external_illust_layout, 3, 1)
         
-        main_layout.addWidget(epub_options_frame)
+        main_layout.addWidget(self.epub_options_frame)
 
         # 처리 시작 버튼
         self.process_button = QPushButton("EPUB 생성 시작") # 초기값, update_output_widgets_pyqt에서 변경됨

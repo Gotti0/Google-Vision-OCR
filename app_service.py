@@ -23,15 +23,16 @@ class ApplicationService:
             app_logger.error(f"Google Cloud 인증 파일을 찾을 수 없음: {credentials_path}")
             raise FileOperationError(f"Google Cloud 인증 파일을 찾을 수 없음: {credentials_path}")
 
-    def create_epub_from_source(self, input_source, output_epub_path, title, author,
+    def create_document_from_source(self, input_source, output_path, title, author,
                                 illustration_pages_pdf, illustration_images_ext,
-                                is_image_folder_mode, credentials_path=None):
+                                 is_image_folder_mode, credentials_path=None,
+                                 output_format="epub"):
         """
-        주어진 소스(PDF 또는 이미지 폴더)로부터 EPUB 파일을 생성합니다.
+        주어진 소스(PDF 또는 이미지 폴더)로부터 EPUB 또는 TXT 파일을 생성합니다.
 
         Args:
             input_source (str or list): PDF 경로 또는 이미지 파일 경로 리스트.
-            output_epub_path (str): 생성될 EPUB 파일 경로.
+            output_path (str): 생성될 파일 경로 (.epub 또는 .txt).
             title (str): EPUB 제목.
             author (str): EPUB 저자.
             illustration_pages_pdf (list): PDF 내 일러스트 페이지 번호.
@@ -39,13 +40,14 @@ class ApplicationService:
             is_image_folder_mode (bool): 입력이 이미지 폴더인지 여부.
             credentials_path (str, optional): Google Cloud 인증 파일 경로.
                                               OCR 수행 시 필요.
+            output_format (str): 'epub' 또는 'txt'. Defaults to 'epub'.
 
         Returns:
             bool: 성공 여부.
         """
-        app_logger.info(f"EPUB 생성 요청 수신: 입력='{input_source}', 출력='{output_epub_path}', 이미지폴더={is_image_folder_mode}")
+        app_logger.info(f"{output_format.upper()} 생성 요청: 입력='{input_source}', 출력='{output_path}', 이미지폴더={is_image_folder_mode}")
 
-        # OCR이 필요한 경우 (PDF 모드 또는 이미지 폴더 모드에서 일러스트가 아닌 이미지)에만 인증 설정
+        # OCR이 필요한 경우 (일러스트가 아닌 이미지가 있을 경우)에만 인증 설정
         # EpubProcessor 내부에서 OCR 호출 시점에 인증이 설정되어 있어야 함.
         if not is_image_folder_mode or (is_image_folder_mode and len(input_source) > len(illustration_images_ext)):
             if not self.set_google_credentials(credentials_path):
@@ -57,13 +59,24 @@ class ApplicationService:
         try:
             processor = EpubProcessor(
                 input_source=input_source,
-                output_epub_path=output_epub_path,
+                # output_path_for_epub은 EpubProcessor.__init__에서 선택 사항이거나
+                # epub 전용 기본값으로 설정될 수 있습니다.
+                # 포맷이 epub인 경우 output_path를 전달하고, 그렇지 않으면 None을 전달합니다.
+                output_path_for_epub=output_path if output_format == "epub" else None,
                 illustration_pages=illustration_pages_pdf,
                 illustration_images=illustration_images_ext,
                 is_image_folder=is_image_folder_mode
             )
-            processor.create_epub(title=title, author=author)
-            app_logger.info(f"EPUB 생성 성공: {output_epub_path}")
+
+            if output_format == "epub":
+                processor.create_epub(output_epub_path=output_path, title=title, author=author)
+                app_logger.info(f"EPUB 생성 성공: {output_path}")
+            elif output_format == "txt":
+                processor.create_txt(output_txt_path=output_path, title=title) # 저자 정보는 TXT 내용에 기본적으로 사용되지 않음
+                app_logger.info(f"TXT 생성 성공: {output_path}")
+            else:
+                raise ValueError(f"지원되지 않는 출력 포맷입니다: {output_format}")
+
             return True
         except (ConfigError, OCRError, EpubProcessingError, FileOperationError) as app_exc:
             # 이미 정의된 애플리케이션 예외는 그대로 전달
@@ -71,8 +84,8 @@ class ApplicationService:
             raise
         except Exception as e:
             # 예상치 못한 기타 예외는 ApplicationBaseException으로 감싸서 전달
-            app_logger.error(f"EPUB 생성 중 ApplicationService에서 오류 발생: {e}", exc_info=True)
-            raise ApplicationBaseException(f"EPUB 생성 중 예상치 못한 오류: {e}")
+            app_logger.error(f"문서 생성 중 ApplicationService에서 오류 발생 ({output_format}): {e}", exc_info=True)
+            raise ApplicationBaseException(f"문서 생성 중 예상치 못한 오류 ({output_format}): {e}")
 
 # 애플리케이션 서비스의 단일 인스턴스 (필요에 따라)
 # app_service_instance = ApplicationService()

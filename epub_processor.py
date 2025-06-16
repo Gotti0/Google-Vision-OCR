@@ -1,5 +1,6 @@
 import os
 import shutil
+import io # For TXT output
 import time
 import tempfile
 from ebooklib import epub
@@ -12,20 +13,20 @@ from exceptions import EpubProcessingError, FileOperationError, OCRError # 사�
 from dtos import PageDataSource, OcrInputItem, ProcessedPageItem # DTO 임포트
 
 class EpubProcessor:
-    def __init__(self, input_source, output_epub_path, illustration_pages=None, illustration_images=None, is_image_folder=False, language=None):
+    def __init__(self, input_source, output_path_for_epub=None, illustration_pages=None, illustration_images=None, is_image_folder=False, language=None):
         """
-        EPUB 생성기 초기화
+        콘텐츠 처리기 초기화 (EPUB 또는 TXT 생성용)
 
         Args:
             input_source (str or list): 원본 PDF 파일 경로 또는 이미지 파일 경로 리스트
-            output_epub_path (str): 생성될 EPUB 파일 경로
+            output_path_for_epub (str, optional): 생성될 EPUB 파일 경로 (create_epub 호출 시 사용됨). Defaults to None.
             illustration_pages (list, optional): PDF 내 일러스트 페이지 번호 목록 (1부터 시작). Defaults to None.
             illustration_images (list, optional): 별도 일러스트 이미지 파일 경로 목록. Defaults to None.
             is_image_folder (bool): input_source가 이미지 파일 리스트인지 여부. Defaults to False.
         """
         self.language = language if language else config_manager.get("default_epub_language")
         self.input_source = input_source
-        self.output_epub_path = output_epub_path
+        self.output_path_for_epub = output_path_for_epub # EPUB 생성 시에만 사용될 수 있음
         self.illustration_pages = set(illustration_pages) if illustration_pages else set()
         self.illustration_images = [os.path.normpath(p) for p in illustration_images] if illustration_images else []
         self.is_image_folder = is_image_folder
@@ -34,7 +35,7 @@ class EpubProcessor:
         except Exception as e:
             app_logger.error(f"임시 디렉토리 생성 실패: {e}", exc_info=True)
             raise FileOperationError(f"임시 디렉토리 생성에 실패했습니다: {e}")
-        app_logger.info(f"EpubProcessor 초기화: 입력='{input_source}', EPUB='{output_epub_path}', 임시폴더='{self.temp_dir}', 이미지폴더모드={is_image_folder}")
+        app_logger.info(f"Processor 초기화: 입력='{input_source}', EPUB용 기본경로='{output_path_for_epub}', 임시폴더='{self.temp_dir}', 이미지폴더모드={is_image_folder}")
         app_logger.info(f"일러스트 페이지 (PDF 내): {self.illustration_pages}")
         app_logger.info(f"일러스트 이미지 (외부 파일): {self.illustration_images}")
 
@@ -178,11 +179,19 @@ class EpubProcessor:
         processed_page_items.sort(key=lambda item: item.page_num)
         return processed_page_items
 
-    def create_epub(self, title="Sample Ebook", author="Unknown Author"):
+    def create_epub(self, output_epub_path=None, title="Sample Ebook", author="Unknown Author"):
         """
         추출된 텍스트와 이미지를 사용하여 EPUB 파일을 생성
+
+        Args:
+            output_epub_path (str, optional): 생성될 EPUB 파일 경로. None이면 __init__의 output_path_for_epub 사용.
+            title (str): EPUB 제목.
+            author (str): EPUB 저자.
         """
-        app_logger.info(f"EPUB 생성 시작: '{self.output_epub_path}'")
+        final_output_path = output_epub_path or self.output_path_for_epub
+        if not final_output_path:
+            raise ValueError("EPUB 출력 경로가 지정되지 않았습니다.")
+        app_logger.info(f"EPUB 생성 시작: '{final_output_path}'")
         book = epub.EpubBook()
         book.set_identifier('id123456') # 고유 ID 설정 필요
         book.set_title(title)
@@ -275,9 +284,41 @@ class EpubProcessor:
         book.add_item(epub.EpubNcx()) # NCX (목차) 파일 생성
         book.add_item(epub.EpubNav()) # Nav (탐색) 문서 생성
 
-        epub.write_epub(self.output_epub_path, book, {})
-        app_logger.info(f"EPUB 파일 생성 완료: '{self.output_epub_path}'")
+        epub.write_epub(final_output_path, book, {})
+        app_logger.info(f"EPUB 파일 생성 완료: '{final_output_path}'")
         self._cleanup()
+
+    def create_txt(self, output_txt_path, title="Text Output"):
+        """
+        추출된 텍스트를 사용하여 TXT 파일을 생성합니다.
+
+        Args:
+            output_txt_path (str): 생성될 TXT 파일 경로.
+            title (str): TXT 파일의 제목 (주로 로깅 및 메타데이터용).
+        """
+        app_logger.info(f"TXT 생성 시작: '{output_txt_path}', 제목: '{title}'")
+        if not output_txt_path:
+            raise ValueError("TXT 출력 경로가 지정되지 않았습니다.")
+
+        extracted_data = self._extract_and_ocr_pages()
+
+        full_text_content = io.StringIO()
+        full_text_content.write(f"제목: {title}\n\n")
+
+        for item_data in extracted_data: # ProcessedPageItem 객체
+            if item_data.type == 'text':
+                full_text_content.write(f"--- 페이지 {item_data.page_num} (원본: {item_data.original_path}) ---\n")
+                full_text_content.write(item_data.content if item_data.content else "")
+                full_text_content.write("\n\n")
+            elif item_data.type == 'image':
+                full_text_content.write(f"--- 이미지: {item_data.original_path} (페이지 {item_data.page_num}) ---\n")
+                full_text_content.write(f"[이미지 파일: {os.path.basename(item_data.path)}]\n\n")
+
+        with open(output_txt_path, 'w', encoding='utf-8') as f:
+            f.write(full_text_content.getvalue())
+
+        app_logger.info(f"TXT 파일 생성 완료: '{output_txt_path}'")
+        self._cleanup() # 임시 파일 정리
 
     def _cleanup(self):
         """임시 파일 및 폴더 정리"""

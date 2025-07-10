@@ -1,5 +1,6 @@
 import os
 import io
+import time
 import numpy as np
 from PIL import Image
 import cv2
@@ -30,6 +31,10 @@ def detect_text_from_image(image_data):
         client = vision.ImageAnnotatorClient()
         image = vision.Image(content=image_data)
         app_logger.debug("텍스트 감지 수행 중...")
+        
+        # API 호출 딜레이 추가 (0.5초)
+        time.sleep(0.5)
+        
         response = client.text_detection(image=image)
         texts = response.text_annotations
 

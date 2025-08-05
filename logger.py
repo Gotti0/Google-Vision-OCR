@@ -9,7 +9,12 @@ if not os.path.exists(LOG_DIR):
 
 LOG_FILE = os.path.join(LOG_DIR, 'app.log')
 
-def setup_logger(name='ocr_app_logger', log_file=LOG_FILE, level=logging.INFO):
+# --- 로깅 레벨 설정 ---
+# 개발 중에는 logging.DEBUG로 설정하여 상세한 로그를 확인하고,
+# 배포 시에는 logging.INFO로 변경하는 것을 권장합니다.
+CURRENT_LOG_LEVEL = logging.DEBUG
+
+def setup_logger(name='ocr_app_logger', log_file=LOG_FILE, level=CURRENT_LOG_LEVEL):
     """
     애플리케이션 로거를 설정합니다.
 

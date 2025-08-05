@@ -36,6 +36,11 @@ def detect_text_from_image(image_data):
         time.sleep(0.5)
         
         response = client.text_detection(image=image)
+        
+        # 응답 객체의 전체 구조를 확인하기 위해 로깅합니다.
+        # 이 로그는 DEBUG 레벨에서만 기록됩니다.
+        app_logger.debug(f"Google Vision API 응답: {response}")
+        
         texts = response.text_annotations
 
         if texts:
@@ -50,6 +55,39 @@ def detect_text_from_image(image_data):
     except Exception as e:
         app_logger.error(f"Google Vision API 텍스트 감지 중 오류: {e}", exc_info=True)
         raise OCRError(f"OCR 처리 중 예상치 못한 오류 발생: {e}")
+
+def detect_text_with_bounds(image_data):
+    """
+    Detects text in an image file using Google Vision API and returns annotations including bounding boxes.
+    
+    Args:
+        image_data (bytes): The image data in bytes format.
+        
+    Returns:
+        list: A list of text annotations, each including the detected text and its bounding polygon.
+    """
+    try:
+        app_logger.debug("Google Vision API 클라이언트 생성 시도 (for bounds).")
+        client = vision.ImageAnnotatorClient()
+        image = vision.Image(content=image_data)
+        app_logger.debug("텍스트 감지 (with bounds) 수행 중...")
+        
+        # API 호출 딜레이 추가 (0.5초)
+        time.sleep(0.5)
+        
+        response = client.text_detection(image=image)
+        
+        # 응답 객체의 전체 구조를 확인하기 위해 로깅합니다.
+        # 이 로그는 DEBUG 레벨에서만 기록됩니다.
+        app_logger.debug(f"Google Vision API 응답: {response}")
+        
+        return response.text_annotations
+    except vision.exceptions.GoogleCloudError as e: # Google Cloud 관련 명시적 예외 처리
+        app_logger.error(f"Google Vision API 호출 중 GoogleCloudError 발생: {e}", exc_info=True)
+        raise OCRError(f"Google Vision API 오류: {e}")
+    except Exception as e:
+        app_logger.error(f"Google Vision API 텍스트 감지(with bounds) 중 오류: {e}", exc_info=True)
+        raise OCRError(f"OCR 처리(with bounds) 중 예상치 못한 오류 발생: {e}")
 
 def preprocess_image(image):
     """

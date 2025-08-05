@@ -5,6 +5,7 @@ from epub_processor import EpubProcessor
 # 필요한 경우 ocr_service의 특정 기능(예: 환경변수 설정)만 가져올 수 있음
 from ocr_service import os as ocr_os
 from exceptions import ApplicationBaseException, ConfigError, FileOperationError, OCRError, EpubProcessingError # 사용자 정의 예외 임포트
+from searchable_pdf_service import create_searchable_pdf
 
 class ApplicationService:
     def __init__(self):
@@ -22,6 +23,33 @@ class ApplicationService:
         else:
             app_logger.error(f"Google Cloud 인증 파일을 찾을 수 없음: {credentials_path}")
             raise FileOperationError(f"Google Cloud 인증 파일을 찾을 수 없음: {credentials_path}")
+
+    def create_searchable_pdf_from_source(self, input_pdf_path, output_pdf_path, credentials_path, progress_callback=None, finished_callback=None):
+        """
+        스캔된 PDF로부터 검색 가능한 PDF를 생성합니다. (GUI 연동을 위한 콜백 포함)
+        """
+        app_logger.info(f"Searchable PDF 생성 요청: 입력='{input_pdf_path}', 출력='{output_pdf_path}'")
+        try:
+            if not self.set_google_credentials(credentials_path):
+                raise ConfigError("Google Cloud 인증 정보가 설정되지 않았습니다.")
+
+            # searchable_pdf_service의 함수를 직접 호출
+            create_searchable_pdf(input_pdf_path, output_pdf_path)
+            
+            app_logger.info(f"Searchable PDF 생성 성공: {output_pdf_path}")
+            if finished_callback:
+                finished_callback(True, f"Searchable PDF 생성 완료: {os.path.basename(output_pdf_path)}")
+            return True
+        except (ConfigError, OCRError, FileOperationError) as app_exc:
+            app_logger.error(f"Searchable PDF 생성 중 예외 발생: {app_exc.message}", exc_info=True)
+            if finished_callback:
+                finished_callback(False, f"오류: {app_exc.message}")
+            raise
+        except Exception as e:
+            app_logger.error(f"Searchable PDF 생성 중 예상치 못한 오류 발생: {e}", exc_info=True)
+            if finished_callback:
+                finished_callback(False, f"예상치 못한 오류: {e}")
+            raise ApplicationBaseException(f"Searchable PDF 생성 중 예상치 못한 오류: {e}")
 
     def create_document_from_source(self, input_source, output_path, title, author,
                                 illustration_pages_pdf, illustration_images_ext,

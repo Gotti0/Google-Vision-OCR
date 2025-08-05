@@ -68,24 +68,30 @@ class EpubCreatorAppPyQt(QMainWindow):
         self.rb_output_epub = QRadioButton("EPUB")
         self.rb_output_epub.setChecked(True)
         self.rb_output_txt = QRadioButton("TXT")
-        self.rb_output_epub.toggled.connect(self.update_output_widgets_pyqt)
+        self.rb_output_searchable_pdf = QRadioButton("Searchable PDF") # 새 라디오 버튼 추가
         
+        self.rb_output_epub.toggled.connect(self.update_output_widgets_pyqt)
+        self.rb_output_txt.toggled.connect(self.update_output_widgets_pyqt)
+        self.rb_output_searchable_pdf.toggled.connect(self.update_output_widgets_pyqt)
+
         # 출력 포맷 라디오 버튼 그룹화
         self.output_format_group = QButtonGroup(self)
         self.output_format_group.addButton(self.rb_output_epub)
         self.output_format_group.addButton(self.rb_output_txt)
-        # self.rb_output_txt.toggled.connect(self.update_output_widgets_pyqt) # EPUB 라디오 버튼 토글 시 같이 업데이트됨
+        self.output_format_group.addButton(self.rb_output_searchable_pdf) # 그룹에 추가
+        
         output_format_layout.addWidget(output_format_label)
         output_format_layout.addWidget(self.rb_output_epub)
         output_format_layout.addWidget(self.rb_output_txt)
+        output_format_layout.addWidget(self.rb_output_searchable_pdf) # 레이아웃에 추가
         output_format_layout.addStretch()
         main_layout.addLayout(output_format_layout)
 
         # 입력 경로
         self.input_path_label = QLabel("입력 PDF 파일:")
         self.input_path_edit = QLineEdit()
-        self.input_path_edit.setToolTip("EPUB으로 변환할 PDF 파일 또는 이미지 폴더의 경로입니다.")
-        self.input_path_edit.setPlaceholderText("EPUB으로 변환할 PDF 파일 또는 이미지 폴더 경로")
+        self.input_path_edit.setToolTip("변환할 PDF 파일 또는 이미지 폴더의 경로입니다.")
+        self.input_path_edit.setPlaceholderText("변환할 PDF 파일 또는 이미지 폴더 경로")
         self.input_path_button = QPushButton("PDF 찾기")
         self.input_path_button.clicked.connect(self.select_input_source_pyqt) # 연결은 유지, 내부 로직에서 포맷 고려
         self.input_path_button.setToolTip("입력 소스를 선택합니다.")
@@ -178,45 +184,54 @@ class EpubCreatorAppPyQt(QMainWindow):
 
     def update_output_widgets_pyqt(self):
         is_epub_selected = self.rb_output_epub.isChecked()
+        is_txt_selected = self.rb_output_txt.isChecked()
+        is_pdf_selected = self.rb_output_searchable_pdf.isChecked()
 
-        # EPUB 관련 옵션 위젯들의 활성화/비활성화 상태를 설정
-        self.epub_title_edit.setEnabled(is_epub_selected)
-        self.epub_author_edit.setEnabled(is_epub_selected)
-        # 일러스트 관련 위젯들은 입력 타입(PDF/이미지 폴더)에 따라 이미 update_input_widgets_pyqt에서
-        # show/hide 처리되므로, 여기서는 EPUB 선택 여부에 따라 추가로 제어할 수 있습니다.
-        # 예를 들어, PDF 모드일 때만 일러스트 페이지 입력이 의미 있으므로,
-        # is_epub_selected 와 self.rb_pdf.isChecked() 조건을 함께 고려할 수 있습니다.
-        # 여기서는 단순하게 EPUB 선택 시에만 관련 필드가 활성화되도록 합니다.
-        self.epub_illust_pages_pdf_edit.setEnabled(is_epub_selected and self.rb_pdf.isChecked()) # PDF 모드이고 EPUB 선택 시
-        self.epub_illust_images_external_edit.setEnabled(is_epub_selected)
-        self.add_external_illust_button.setEnabled(is_epub_selected)
+        # EPUB 관련 옵션은 EPUB 선택 시에만 활성화
+        self.epub_options_frame.setEnabled(is_epub_selected)
 
-        if self.rb_output_epub.isChecked():
+        if is_epub_selected:
             self.output_path_label.setText("EPUB 출력 파일:")
             self.output_path_edit.setToolTip("생성될 EPUB 파일의 전체 경로입니다. (.epub)")
             self.output_path_edit.setPlaceholderText("생성될 EPUB 파일의 전체 경로 (.epub)")
             self.output_path_button.setToolTip("EPUB 저장 경로와 파일명을 선택합니다.")
             self.process_button.setText("EPUB 생성 시작")
             self.process_button.setToolTip("입력된 정보를 바탕으로 EPUB 생성을 시작합니다.")
-            self.epub_options_frame.setEnabled(True) # EPUB 옵션 프레임 전체 활성화
-        else: # TXT 선택
+        elif is_txt_selected:
             self.output_path_label.setText("TXT 출력 파일:")
             self.output_path_edit.setToolTip("생성될 TXT 파일의 전체 경로입니다. (.txt)")
             self.output_path_edit.setPlaceholderText("생성될 TXT 파일의 전체 경로 (.txt)")
             self.output_path_button.setToolTip("TXT 저장 경로와 파일명을 선택합니다.")
             self.process_button.setText("TXT 생성 시작")
             self.process_button.setToolTip("입력된 정보를 바탕으로 TXT 생성을 시작합니다.")
-            self.epub_options_frame.setEnabled(False) # EPUB 옵션 프레임 전체 비활성화
-        # 입력 소스 변경 시 기본 출력 경로도 업데이트되도록 update_input_widgets_pyqt 호출
+        elif is_pdf_selected:
+            self.output_path_label.setText("Searchable PDF 출력:")
+            self.output_path_edit.setToolTip("생성될 Searchable PDF 파일의 전체 경로입니다. (.pdf)")
+            self.output_path_edit.setPlaceholderText("생성될 Searchable PDF 파일의 전체 경로 (.pdf)")
+            self.output_path_button.setToolTip("Searchable PDF 저장 경로와 파일명을 선택합니다.")
+            self.process_button.setText("Searchable PDF 생성 시작")
+            self.process_button.setToolTip("입력된 정보를 바탕으로 Searchable PDF 생성을 시작합니다.")
+
         self.update_default_output_path()
 
     def update_input_widgets_pyqt(self):
-        if self.rb_pdf.isChecked():
+        is_pdf_mode = self.rb_pdf.isChecked()
+        is_searchable_pdf_mode = self.rb_output_searchable_pdf.isChecked()
+
+        # Searchable PDF 모드에서는 입력이 PDF만 가능하도록 강제
+        if is_searchable_pdf_mode:
+            self.rb_pdf.setChecked(True)
+            self.rb_image_folder.setEnabled(False)
+            is_pdf_mode = True
+        else:
+            self.rb_image_folder.setEnabled(True)
+
+        if is_pdf_mode:
             self.input_path_label.setText("입력 PDF 파일:")
             self.input_path_button.setText("PDF 찾기")
             self.pdf_illust_label.show()
             self.epub_illust_pages_pdf_edit.show()
-            self.epub_illust_pages_pdf_edit.setEnabled(self.rb_output_epub.isChecked()) # EPUB 선택 시에만 활성화
+            self.epub_illust_pages_pdf_edit.setEnabled(self.rb_output_epub.isChecked())
             self.external_illust_label.setText("외부 일러스트 파일:")
             self.epub_illust_pages_pdf_edit.setToolTip("PDF 내 일러스트 페이지 번호를 쉼표로 구분하여 입력 (예: 1,5,10)")
             self.epub_illust_images_external_edit.setToolTip("외부 일러스트 이미지 파일 경로 (본문 처리 후 추가됨). 쉼표로 구분하거나 찾아보기 사용.")
@@ -226,12 +241,14 @@ class EpubCreatorAppPyQt(QMainWindow):
             self.pdf_illust_label.hide()
             self.epub_illust_pages_pdf_edit.hide()
             self.epub_illust_pages_pdf_edit.clear()
-            self.epub_illust_pages_pdf_edit.setEnabled(False) # 이미지 폴더 모드에서는 항상 비활성화
+            self.epub_illust_pages_pdf_edit.setEnabled(False)
             self.external_illust_label.setText("일러스트 지정(폴더내):")
             self.epub_illust_images_external_edit.setToolTip("폴더 내 특정 이미지 파일을 일러스트로 지정 (OCR 제외). 쉼표로 구분하거나 찾아보기 사용.")
-        self.input_path_edit.clear()
-        # self.epub_illust_images_external_edit.setEnabled(self.rb_output_epub.isChecked()) # 공통으로 EPUB 선택 시에만 활성화
-        self.update_default_output_path() # 입력 타입 변경 시 출력 경로도 업데이트
+        
+        if not is_searchable_pdf_mode:
+            self.input_path_edit.clear()
+        
+        self.update_default_output_path()
 
     def select_input_source_pyqt(self):
         if self.rb_pdf.isChecked():
@@ -245,7 +262,12 @@ class EpubCreatorAppPyQt(QMainWindow):
             self.output_path_edit.clear()
             return
 
-        ext = ".epub" if self.rb_output_epub.isChecked() else ".txt"
+        if self.rb_output_epub.isChecked():
+            ext = ".epub"
+        elif self.rb_output_txt.isChecked():
+            ext = ".txt"
+        else: # Searchable PDF
+            ext = ".pdf"
         
         if os.path.isfile(input_path): # PDF 파일의 경우
             dir_name = os.path.dirname(input_path)
@@ -265,7 +287,7 @@ class EpubCreatorAppPyQt(QMainWindow):
         app_logger.info(f"출력 경로 기본값 설정됨 ({ext}): {default_output_path}")
 
     def select_input_pdf_for_epub_pyqt(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "EPUB으로 만들 PDF 파일 선택", "", "PDF Files (*.pdf);;All Files (*)")
+        file_path, _ = QFileDialog.getOpenFileName(self, "PDF 파일 선택", "", "PDF Files (*.pdf);;All Files (*)")
         if file_path:
             self.input_path_edit.setText(file_path)
             app_logger.info(f"입력 PDF 파일 선택됨: {file_path}")
@@ -279,9 +301,17 @@ class EpubCreatorAppPyQt(QMainWindow):
             self.update_default_output_path()
 
     def select_output_file_pyqt(self):
-        default_filter = "EPUB Files (*.epub)" if self.rb_output_epub.isChecked() else "Text Files (*.txt)"
-        dialog_title = "EPUB 파일로 저장" if self.rb_output_epub.isChecked() else "TXT 파일로 저장"
-        file_path, _ = QFileDialog.getSaveFileName(self, dialog_title, "", f"{default_filter};;All Files (*)")
+        if self.rb_output_epub.isChecked():
+            default_filter = "EPUB Files (*.epub)"
+            dialog_title = "EPUB 파일로 저장"
+        elif self.rb_output_txt.isChecked():
+            default_filter = "Text Files (*.txt)"
+            dialog_title = "TXT 파일로 저장"
+        else: # Searchable PDF
+            default_filter = "PDF Files (*.pdf)"
+            dialog_title = "Searchable PDF로 저장"
+
+        file_path, _ = QFileDialog.getSaveFileName(self, dialog_title, self.output_path_edit.text(), f"{default_filter};;All Files (*)")
         if file_path:
             self.output_path_edit.setText(file_path)
             app_logger.info(f"출력 파일 선택됨: {file_path}")
@@ -305,31 +335,36 @@ class EpubCreatorAppPyQt(QMainWindow):
         input_path = self.input_path_edit.text()
         output_path = self.output_path_edit.text()
         credentials_file = self.credentials_edit.text()
-        output_format = "epub" if self.rb_output_epub.isChecked() else "txt"
+        
+        if self.rb_output_epub.isChecked():
+            output_format = "epub"
+        elif self.rb_output_txt.isChecked():
+            output_format = "txt"
+        else:
+            output_format = "pdf"
+
         is_image_folder_mode = self.rb_image_folder.isChecked()
 
-        # 유효성 검사 (tkinter 버전과 유사하게)
-        if not input_path:
-            QMessageBox.warning(self, "입력 오류", "입력 PDF 파일 또는 이미지 폴더를 선택해주세요.")
+        if not input_path or not output_path:
+            QMessageBox.warning(self, "입력 오류", "입력과 출력 경로를 모두 지정해주세요.")
             return
-        # ... (다른 유효성 검사 추가) ...
-        if not output_path:
-            QMessageBox.warning(self, "입력 오류", "출력 파일 경로를 지정해주세요.")
+        if not credentials_file:
+            QMessageBox.warning(self, "인증 오류", "서비스 계정 JSON 파일을 선택해주세요.")
+            return
+        if output_format == "pdf" and is_image_folder_mode:
+            QMessageBox.warning(self, "입력 오류", "Searchable PDF 변환은 PDF 입력 파일만 지원합니다.")
             return
 
         self.process_button.setEnabled(False)
         self.status_label.setText("처리 중...")
         app_logger.info(f"{output_format.upper()} 생성 스레드 시작 중...")
 
-        # 스레드에서 실행될 작업 준비
         self.worker_signals = WorkerSignals()
         self.worker_signals.finished.connect(self.on_processing_finished)
         self.worker_signals.error.connect(self.on_processing_error)
         self.worker_signals.success.connect(self.on_processing_success)
         self.worker_signals.status_update.connect(self.status_label.setText)
 
-        # 스레드 생성 및 시작
-        # (기존 start_processing_thread의 로직을 별도 함수로 분리하여 스레드에서 실행)
         thread = threading.Thread(target=self.run_document_creation_task,
                                   args=(input_path, output_path, credentials_file, is_image_folder_mode, output_format, self.worker_signals))
         thread.daemon = True
@@ -337,6 +372,16 @@ class EpubCreatorAppPyQt(QMainWindow):
 
     def run_document_creation_task(self, input_path, output_path, credentials_file, is_image_folder_mode, output_format, signals):
         try:
+            if output_format == "pdf":
+                self.app_service.create_searchable_pdf_from_source(
+                    input_pdf_path=input_path,
+                    output_pdf_path=output_path,
+                    credentials_path=credentials_file
+                )
+                signals.success.emit("완료", f"Searchable PDF 파일 '{os.path.basename(output_path)}' 생성이 완료되었습니다.")
+                return
+
+            # --- 기존 EPUB/TXT 생성 로직 ---
             epub_title = self.epub_title_edit.text()
             epub_author = self.epub_author_edit.text()
             illust_pages_pdf_str = self.epub_illust_pages_pdf_edit.text()

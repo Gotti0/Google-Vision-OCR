@@ -86,6 +86,8 @@ class EpubProcessor:
             temp_image_filename = f"page_{page_number_for_processing}.jpg"
             temp_image_path = os.path.join(self.temp_dir, temp_image_filename)
             try:
+                if pil_image.mode != 'RGB':
+                    pil_image = pil_image.convert('RGB')
                 pil_image.save(temp_image_path, "JPEG")
             except Exception as e:
                 app_logger.error(f"임시 이미지 파일 저장 실패 '{temp_image_path}': {e}", exc_info=True)

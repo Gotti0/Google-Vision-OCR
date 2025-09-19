@@ -323,7 +323,7 @@ class EpubCreatorAppPyQt(QMainWindow):
             app_logger.info(f"서비스 계정 파일 선택됨: {file_path}")
 
     def select_external_illust_files_pyqt(self):
-        files, _ = QFileDialog.getOpenFileNames(self, "외부 일러스트 이미지 파일 선택", "", "Image Files (*.png *.jpg *.jpeg *.bmp *.tiff *.gif);;All Files (*)")
+        files, _ = QFileDialog.getOpenFileNames(self, "외부 일러스트 이미지 파일 선택", "", "Image Files (*.png *.jpg *.jpeg *.bmp *.tiff *.gif *.webp);;All Files (*)")
         if files:
             current_paths = self.epub_illust_images_external_edit.text()
             existing_paths = [p.strip() for p in current_paths.split(',') if p.strip()] if current_paths else []
@@ -399,7 +399,7 @@ class EpubCreatorAppPyQt(QMainWindow):
 
             final_input_source = input_path
             if is_image_folder_mode:
-                supported_extensions = ('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.gif')
+                supported_extensions = ('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.gif', '.webp')
                 try:
                     image_files = sorted([os.path.join(input_path, f) for f in os.listdir(input_path) if f.lower().endswith(supported_extensions)])
                     if not image_files:

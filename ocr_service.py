@@ -184,7 +184,7 @@ def process_images_in_folder(input_folder, output_folder):
             os.makedirs(output_folder)
             app_logger.info(f"출력 폴더 생성됨: {output_folder}")
 
-        supported_image_extensions = ('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.gif')
+        supported_image_extensions = ('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.gif', '.webp')
         image_files_processed = 0
         for file_name in os.listdir(input_folder):
             if file_name.lower().endswith(supported_image_extensions):
@@ -217,7 +217,7 @@ def process_single_image_file(image_path, output_folder):
         # img = preprocess_image(img)
 
         buffer = io.BytesIO()
-        img_format = img.format if img.format in ["PNG", "JPEG", "BMP", "TIFF"] else "PNG"
+        img_format = img.format if img.format in ["PNG", "JPEG", "BMP", "TIFF", "WEBP"] else "PNG"
         img.save(buffer, format=img_format)
         image_data = buffer.getvalue()
         app_logger.debug(f"이미지를 바이트 데이터로 변환 완료 (포맷: {img_format}).")

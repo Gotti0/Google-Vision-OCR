@@ -154,28 +154,31 @@ class EpubProcessor:
 
         # 외부 일러스트 이미지 추가
         for idx, img_path in enumerate(self.illustration_images):
-            if os.path.exists(img_path):
-                normalized_img_path = os.path.normpath(img_path) # 이미 __init__에서 정규화되었지만, 일관성을 위해 다시 호출
+            # 경로의 앞뒤 공백과 따옴표를 제거하여 경로 문제 방지
+            cleaned_path = img_path.strip().strip('"')
+            if os.path.exists(cleaned_path):
+                normalized_img_path = os.path.normpath(cleaned_path)
                 # 이미지 폴더 모드에서 이미 폴더 내 일러스트로 지정된 경우 중복 방지
                 if self.is_image_folder and normalized_img_path in [item.original_path for item in processed_page_items if item.type == 'image']:
-                    app_logger.info(f"외부 일러스트 '{img_path}'는 이미 폴더 내 지정 일러스트로 처리됨. 중복 추가 안함.")
+                    app_logger.info(f"외부 일러스트 '{cleaned_path}'는 이미 폴더 내 지정 일러스트로 처리됨. 중복 추가 안함.")
                     continue
                 
-                temp_ext_img_name = f"ext_illust_{idx}{os.path.splitext(img_path)[1]}" # img_path 사용
+                temp_ext_img_name = f"ext_illust_{idx}{os.path.splitext(cleaned_path)[1]}"
                 temp_ext_img_path = os.path.join(self.temp_dir, temp_ext_img_name)
                 try:
-                    shutil.copy(img_path, temp_ext_img_path)
-                    app_logger.info(f"외부 일러스트 이미지 추가: {img_path} -> {temp_ext_img_path}")
+                    shutil.copy(cleaned_path, temp_ext_img_path)
+                    app_logger.info(f"외부 일러스트 이미지 추가: {cleaned_path} -> {temp_ext_img_path}")
                     processed_page_items.append(ProcessedPageItem(
                         type='image', path=temp_ext_img_path,
                         id=f'img_ext_{idx}', page_num=len(source_page_data_list) + idx + 1, # 페이지 번호는 기존 페이지 수 이후로
                         original_path=normalized_img_path # 정규화된 경로 저장
                     ))
                 except Exception as e:
-                    app_logger.warning(f"외부 일러스트 파일 복사 실패 '{img_path}': {e}")
+                    app_logger.warning(f"외부 일러스트 파일 복사 실패 '{cleaned_path}': {e}")
                     # 오류를 발생시키지 않고 경고만 로깅 후 계속 진행할 수 있음
             else:
-                app_logger.warning(f"외부 일러스트 이미지 파일을 찾을 수 없음: {img_path}")
+                app_logger.error(f"외부 일러스트 이미지 파일을 찾을 수 없음: {img_path}")
+                raise FileOperationError(f"외부 일러스트 이미지 파일을 찾을 수 없음: {img_path}")
 
         # 페이지 번호 기준으로 정렬
         processed_page_items.sort(key=lambda item: item.page_num)
@@ -219,7 +222,7 @@ class EpubProcessor:
             merged_item_id = start_item.id # 예: 'page_1'
             
             # 병합된 챕터의 전체 제목을 h1으로, 각 페이지 내용은 기존 포맷 유지
-            final_html_content = f"<h1>{merged_chapter_title}</h1>{merged_content_html}"
+            final_html_content = f"{merged_content_html}"
             
             epub_merged_chapter = epub.EpubHtml(title=merged_chapter_title, file_name=f'{merged_item_id}.xhtml', lang=self.language)
             epub_merged_chapter.content = final_html_content
@@ -235,9 +238,9 @@ class EpubProcessor:
                     current_text_group_start_item = item_data
                 
                 # 각 원본 페이지의 부제목과 내용을 그룹에 추가
-                page_specific_title = f'Page {item_data.page_num}'
+                # page_specific_title = f'Page {item_data.page_num}'
                 # 병합된 파일 내에서는 h2로 각 페이지 시작을 표시
-                html_for_this_page = f"<h2>{page_specific_title}</h2><pre>{item_data.content}</pre>\n"
+                html_for_this_page = f"<pre>{item_data.content}</pre>\n"
                 current_text_group_content_html.append(html_for_this_page)
             
             elif item_data.type == 'image':
@@ -264,7 +267,7 @@ class EpubProcessor:
                         image_chapter_title = f'Illustration (Page {item_data.page_num})'
                         image_xhtml_filename = f'img_page_{item_data.id}.xhtml' # item_data.id 사용
                         epub_img_chapter = epub.EpubHtml(title=image_chapter_title, file_name=image_xhtml_filename, lang=self.language)
-                        epub_img_chapter.content = f'<h1>{image_chapter_title}</h1><div><img src="images/{img_filename_epub}" alt="{image_chapter_title}" style="max-width:100%;"/></div>'
+                        epub_img_chapter.content = f'<div><img src="images/{img_filename_epub}" alt="{image_chapter_title}" style="max-width:100%;"/></div>'
                         epub_img_chapter.add_item(epub_image)
                         book.add_item(epub_img_chapter)
                         new_chapters_for_toc.append(epub_img_chapter)
@@ -309,11 +312,9 @@ class EpubProcessor:
 
         for item_data in extracted_data: # ProcessedPageItem 객체
             if item_data.type == 'text':
-                full_text_content.write(f"--- 페이지 {item_data.page_num} (원본: {item_data.original_path}) ---\n")
                 full_text_content.write(item_data.content if item_data.content else "")
                 full_text_content.write("\n\n")
             elif item_data.type == 'image':
-                full_text_content.write(f"--- 이미지: {item_data.original_path} (페이지 {item_data.page_num}) ---\n")
                 full_text_content.write(f"[이미지 파일: {os.path.basename(item_data.path)}]\n\n")
 
         with open(output_txt_path, 'w', encoding='utf-8') as f:

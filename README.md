@@ -78,6 +78,24 @@
     - 프로그램 첫 실행 시, `config_manager.py`와 동일한 디렉토리에 `config.json` 파일이 기본값으로 자동 생성됩니다.
     - 필요에 따라 이 파일을 수정하여 기본 EPUB 제목, 저자, 언어, OCR 워커 수 등을 변경할 수 있습니다.
 
+## MCP 연결
+
+`mcp_server.py`는 기존 `ocr_service.process_page`를 재사용하는 텍스트 전용 stdio 서버다.
+Google Cloud Vision OCR API로 선택한 페이지/이미지를 전송하므로 과금될 수 있다.
+대화 모델에 이미지를 반환하지 않는다. 설치: `.venv/Scripts/python.exe -m pip install -r requirements-mcp.txt`.
+실행: `.venv/Scripts/python.exe mcp_server.py`.
+
+클라이언트에는 Python과 스크립트의 절대 경로를 등록한다. 환경 변수
+`GOOGLE_APPLICATION_CREDENTIALS`에는 기존 로컬 키 경로를 지정하고 키 내용은 저장소에 넣지 않는다.
+Poppler가 PATH에 없으면 `OCR_POPPLER_BIN`으로 실행 파일 디렉터리를 지정한다.
+
+- `ocr_status`: 로컬 의존성 및 키 파일 존재 확인. 과금 호출 없으며 인증 성공을 뜻하지 않는다.
+- `ocr_pdf_pages`: PDF 절대 경로, 중복 없는 1-based 페이지 최대 10개, DPI 72~300(기본 200).
+- `ocr_image`: 단일 프레임 이미지 절대 경로. 다중 프레임은 거부한다.
+
+결과는 페이지별 텍스트로 반환하며 파일을 덮어쓰지 않는다. 수식·표의 OCR 정확성은 보장하지 않는다.
+모의 테스트: `.venv/Scripts/python.exe -m unittest test_mcp_server -v`.
+
 ## 실행 방법
 
 1.  필요한 모든 설정이 완료되었는지 확인합니다.
